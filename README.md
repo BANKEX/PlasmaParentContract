@@ -1,5 +1,7 @@
 # Plasma Parent Contract
 
+# This contract is active WIP, tests and transaction structure descriptions will be pushed in the next few days
+
 ## This contract differs from Minimal Viable Plasma in the following:
 
 - Other transactions structure with nested RLP fields
@@ -16,8 +18,6 @@
 ## Contribution
 
 Everyone is welcome to spot mistakes in the logic of this contract as number of provided functions is substantial. If you find a potential error or security loophole (one that would allow Plasma operator or user to break the normal operation and not being caught) - please open an issue.
-
-## Authors
 
 ## Authors
 
