@@ -1,6 +1,58 @@
 # Plasma Parent Contract
 
-# This contract is active WIP, tests and transaction structure descriptions will be pushed in the next few days
+# This contract is active WIP, tests will be pushed in the next few days
+
+## Transaction structure
+
+### Input
+An RLP encoded set with the following items:
+- Block number, 4 bytes
+- Transaction number in block, 4 bytes
+- Output number in transaction, 1 byte
+- "Amount" field, 32 bytes, that is more a data field, usually used for an amount of the output referenced by previous field, but has special meaning for "Deposit" transacitons
+
+### Output
+An RLP encoded set with the following items:
+- Output number in transaction, 1 byte
+- Receiver's Ethereum address, 20 bytes
+- "Amount" field, 32 bytes
+
+### Transaction 
+An RLP encoded set with the following items:
+- Transaction type, 1 byte
+- An array (list) of Inputs, maximum 2 items
+- An array (list) of Outputs, maximum 3 items. One of the outputs is an explicit output to an address of Plasma operator.
+
+### Signed transaction 
+An RLP encoded set with the following items:
+- Transaction, as described above
+- Recoverable EC of the transaction sender:
+   1) V value, 1 byte, expected values 27, 28
+   2) R value, 32 bytes
+   3) S value, 32 bytes
+
+From this signature Plasma operator deduces a sender, checks that the sender is an owner of UTXOs referenced by inputs. Signature is based on EthereumPersonalHash(RLPEncode(Transaction)). Transaction should be well-formed, sum of inputs equal to sum of the outputs, etc 
+
+### Numbered signed transaction 
+An RLP encoded set with the following items:
+- Transaction number in block, 4 bytes, inserted by Plasma operator when block is assembled
+- Signed transaction, as described above
+
+### Block header
+- Block number, 4 bytes, used in the main chain to double check proper ordering
+- Number of transactions in block, 4 bytes, purely informational
+- Parent hash, 32 bytes, hash of the previus block, hashes the full header
+- Merkle root of the transactions tree, 32 bytes
+- V value, 1 byte, expected values 27, 28
+- R value, 32 bytes
+- S value, 32 bytes
+Signature is based on EthereumPersonalHash(block number || number of transactions || previous hash || merkle root), where || means concatenation. Values V, R, S are than concatenated to the header.
+
+### Block
+- Block header, as described above, 137 bytes
+- RLP encoded array (list) of Numbered signed transactions, as described above
+
+While some fields can be excessive, such block header can be submitted by anyone to the main Ethereum chain when block is availible, but for some reason not sent to the smart contract. Transaction numbering is done by the operator, it should be monotonically increasing without spaces and number of transactions in header should (although this is not necessary for the functionality) match the number of transactions in the Merkle tree and the full block.
 
 ## This contract differs from Minimal Viable Plasma in the following:
 
@@ -30,7 +82,6 @@ Alex Vlasov, [@shamatar](https://github.com/shamatar),  alex.m.vlasov@bankex.com
 - Fast withdraws - are they even necessary?
 - While in a process of sending funds A -> B inclusion of this transaction in a block and block being committed to the main chain is enough for everyone, we should develop some kind of mechanism for a user A who has an access to the full Plasma and main Ethereum network to produce some kind of proof that 
   1) transaction is included in Plasma block 
-  
   2) Plasma block is included in the main chain
   
   so the user B can believe A even without access to the Plasma and Ethereum at that moment.
