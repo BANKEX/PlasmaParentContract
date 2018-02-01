@@ -85,3 +85,7 @@ Alex Vlasov, [@shamatar](https://github.com/shamatar),  alex.m.vlasov@bankex.com
   2) Plasma block is included in the main chain
   
   so the user B can believe A even without access to the Plasma and Ethereum at that moment.
+
+## License
+
+All source code and information in this repository is available under the Apache License 2.0 license. See the [LICENSE](https://github.com/BANKEX/PlasmaParentContract/blob/master/LICENSE) file for more info.
