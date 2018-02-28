@@ -1,4 +1,4 @@
-pragma solidity 0.4.19;
+pragma solidity 0.4.20;
 
 // original source from https://github.com/DavidKnott
 // https://github.com/omisego/plasma-mvp/blob/master/plasma/root_chain/contracts/RootChain/RootChain.sol

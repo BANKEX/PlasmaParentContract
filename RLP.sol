@@ -7,7 +7,7 @@
 * updated by
 * @author Alex Vlasov (alex.m.vlasov@gmail.com)
 */
-pragma solidity ^0.4.19;
+pragma solidity ^0.4.20;
 
 library RLP {
 
