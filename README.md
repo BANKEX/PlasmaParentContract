@@ -85,6 +85,28 @@ Everyone is welcome to spot mistakes in the logic of this contract as number of 
 
 Alex Vlasov, [@shamatar](https://github.com/shamatar),  av@bankexfoundation.org
 
+## Transactions in flight
+
+Plasma operator deposits a collateral on the contract.
+
+Let's say a transaction is sent at the time T
+- User A sends 1 ETH at time T to user B
+- There is some attack on Plasma chain (rules breaking) at time T+1, but neither user A nor B notices it. Block number at this point is N
+- This transaction is included at T+2 in block N+1
+- Someone notices a problem that happened at time T+1 and block N, now plasma contract is in "Freeze mode", ALL EXISTING "withdraws" (normal operation exits) are reset and user has to restart the procedure by joining a priority queue of emergency exits. For this purpose there is 7 days delay on normal "withdraw"
+- Even if someone started a "withdraw" at time T+1 (such "withdraws" could be an attack), those can not exit and have to rejoin emergency exits queue.
+- All users that have a valid UTXO before time T+1 and block N exit (including user A, so he kind-of double-spends)
+- Legitimate UTXOs created in block N still exit (remember, interactive exit procedure exists and non-valid UTXOs in block N will never exit), and the follwing blocks will exit too as long as there are money left from the collateral of the Plasma operator
+- So user B will most likely get his money, but will receive it from the pocket of Plasma operator
+
+Although at the first place user B should also check someone monitoring the Plasma chain being consistent for all accounts before accepting a transaction. Please mind that normally users are expected to monitor only UTXOs that touch his account.
+
+Why two-step procedure doesn't solve a problem at the first place:
+- User A sends 1 ETH at time T to user B
+- There is some attack on Plasma chain (rules breaking) at time T+1, but neither user A nor B notices it. Block number at this point is N
+- This transaction is included at T+2 in block N+1
+- To be sure that block N+1 is valid (and to sign a commitment of form "I've sent the transaction, it was included and it's legitimate"), user A must monitor the Plasma chain for all transactions and all accounts but not just transactions regarding his wallet. That is the same as our note above for user B precautions
+
 ## Open questions
 
 - Fast withdraws - are they even necessary?
