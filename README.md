@@ -2,6 +2,14 @@
 
 # This contract is active WIP, tests will be pushed in the next few days
 
+# TODO
+
+- Check that an address that deposits money has no code associated with it.
+- Add a method "deposit to(address _to)" to deposit money from smart-contract to some address with a private key.
+- Add a method to withdraw to address other than "msg.sender" (low priority).
+- Add a zkSNARK to be able to prove knowledge of the private key for an Ethereum address (for fun).
+- Evaluate a use of external WithdrawRecord/DepositRecord holder the same way as BlockStorage works, so the main contract can migrate (although it implies partial loss of trust or should be done by a commitee of "trusted" parties). Most likely a V2 ABI encoding support is necessary.
+
 ## Transaction structure
 
 ### Input
@@ -69,7 +77,7 @@ While some fields can be excessive, such block header can be submitted by anyone
 
 All basic challanges and potential "cheats" for operator or user should be now covered
 
-- Normal mode operation: deposit, withdraw,  challanges of deposit and withdraw procedures.
+- Normal mode operation: deposit, withdraw, challanges of deposit and withdraw procedures.
 - Some invalid transaction proofs:
    - double spend
    - double deposit
@@ -85,36 +93,11 @@ Everyone is welcome to spot mistakes in the logic of this contract as number of 
 
 Alex Vlasov, [@shamatar](https://github.com/shamatar),  av@bankexfoundation.org
 
-## Transactions in flight
+## Further work
 
-Plasma operator deposits a collateral on the contract.
+Making a hybrid of Minimal Viable Plasma and Plasma Cash to use separate tree of all transactions ever spent, and use this tree when withdraw procesure is executed.
 
-Let's say a transaction is sent at the time T
-- User A sends 1 ETH at time T to user B
-- There is some attack on Plasma chain (rules breaking) at time T+1, but neither user A nor B notices it. Block number at this point is N
-- This transaction is included at T+2 in block N+1
-- Someone notices a problem that happened at time T+1 and block N, now plasma contract is in "Freeze mode", ALL EXISTING "withdraws" (normal operation exits) are reset and user has to restart the procedure by joining a priority queue of emergency exits. For this purpose there is 7 days delay on normal "withdraw"
-- Even if someone started a "withdraw" at time T+1 (such "withdraws" could be an attack), those can not exit and have to rejoin emergency exits queue.
-- All users that have a valid UTXO before time T+1 and block N exit (including user A, so he kind-of double-spends)
-- Legitimate UTXOs created in block N still exit (remember, interactive exit procedure exists and non-valid UTXOs in block N will never exit), and the follwing blocks will exit too as long as there are money left from the collateral of the Plasma operator
-- So user B will most likely get his money, but will receive it from the pocket of Plasma operator
-
-Although at the first place user B should also check someone monitoring the Plasma chain being consistent for all accounts before accepting a transaction. Please mind that normally users are expected to monitor only UTXOs that touch his account.
-
-Why two-step procedure doesn't solve a problem at the first place:
-- User A sends 1 ETH at time T to user B
-- There is some attack on Plasma chain (rules breaking) at time T+1, but neither user A nor B notices it. Block number at this point is N
-- This transaction is included at T+2 in block N+1
-- To be sure that block N+1 is valid (and to sign a commitment of form "I've sent the transaction, it was included and it's legitimate"), user A must monitor the Plasma chain for all transactions and all accounts but not just transactions regarding his wallet. That is the same as our note above for user B precautions
-
-## Open questions
-
-- Fast withdraws - are they even necessary?
-- While in a process of sending funds A -> B inclusion of this transaction in a block and block being committed to the main chain is enough for everyone, we should develop some kind of mechanism for a user A who has an access to the full Plasma and main Ethereum network to produce some kind of proof that 
-  1) transaction is included in Plasma block 
-  2) Plasma block is included in the main chain
-  
-  so the user B can believe A even without access to the Plasma and Ethereum at that moment.
+Trial usage of invariant that sum of all unchallenged pending withdrawals should be less than or equal to a total balance of Plasma contract. It will prevent the case of block withholding by Plasma operator - by trying to do a double spend or unvalid ownership transfer and than to withhold few blocks to prevent a global stop he will most likely exceed such limitation.
 
 ## License
 

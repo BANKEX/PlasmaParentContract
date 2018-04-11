@@ -1,4 +1,4 @@
-pragma solidity 0.4.20;
+pragma solidity ^0.4.21;
 
 // original source from https://github.com/DavidKnott
 // https://github.com/omisego/plasma-mvp/blob/master/plasma/root_chain/contracts/RootChain/RootChain.sol
@@ -27,6 +27,14 @@ library SafeMath {
   }
 }
 
+interface PriorityQueueInterface {
+    function insert(uint256 k) external;
+    function minChild(uint256 i) view external returns (uint256);
+    function getMin() external view returns (uint256);
+    function delMin() external returns (uint256);
+    function currentSize() external returns(uint256);
+}
+
 contract PriorityQueue {
     using SafeMath for uint256;
 
@@ -38,7 +46,12 @@ contract PriorityQueue {
         _;
     }
 
-    /* 
+    function setOwner (address _newOwner) onlyOwner public {
+        require(_newOwner != address(0));
+        owner = _newOwner;
+    }
+
+    /*
      *  Storage
      */
     address owner;
@@ -53,7 +66,7 @@ contract PriorityQueue {
         currentSize = 0;
     }
 
-    function insert(uint256 k) 
+    function insert(uint256 k)
         public
         onlyOwner
     {
@@ -99,7 +112,7 @@ contract PriorityQueue {
         return retVal;
     }
 
-    function percUp(uint256 i) 
+    function percUp(uint256 i)
         private
     {
         while (i.div(2) > 0) {
