@@ -1,84 +1,164 @@
-pragma solidity ^0.4.21;
+pragma solidity ^0.4.23;
+
+import {PlasmaParentInterface} from "./PlasmaParent.sol";
+import {Conversion} from "./Conversion.sol";
+import {ByteSlice} from "./ByteSlice.sol";
 
 interface PlasmaBlockStorageInterface {
     function lastBlockNumber() external view returns(uint256);
+    function hashOfLastSubmittedBlock() external view returns(bytes32);
     function weekOldBlockNumber() external view returns(uint256);
-    function storeBlock(uint256 _blockNumber, bytes32 _merkleRoot) external returns (bool success);
-    function storeBlocks(uint256[] _blockNumbers, bytes32[] _merkleRoots) external returns (bool success);
-    function getBlockInformation(uint32 _blockNumber) external view returns (uint256 submittedAt, bytes32 merkleRoot);
+    function submitBlockHeaders(bytes _headers) external returns (bool success);
+    // function storeBlock(uint256 _blockNumber, uint256 _numberOfTransactions, bytes32 _merkleRoot) external returns (bool success);
+    // function storeBlocks(uint256[] _blockNumbers, uint256[] _numbersOfTransactions, bytes32[] _merkleRoots) external returns (bool success);
+    function getBlockInformation(uint32 _blockNumber) external view returns (uint256 submittedAt, uint32 numberOfTransactions, bytes32 merkleRoot);
     function getMerkleRoot(uint32 _blockNumber) external view returns (bytes32 merkleRoot);
     function incrementWeekOldCounter() external;
     function getSubmissionTime(uint32 _blockNumber) external view returns (uint256 submittedAt);
+    function getNumberOfTransactions(uint32 _blockNumber) external view returns (uint32 numberOfTransaction);
 }
 
 contract PlasmaBlockStorage {
-    address public owner = msg.sender;
+    using ByteSlice for bytes;
+    using ByteSlice for ByteSlice.Slice;
+    using Conversion for uint256;
+    PlasmaParentInterface public owner;
 
-    uint256 public lastBlockNumber = 0;
-    uint256 public weekOldBlockNumber = 0;
+    uint256 public lastBlockNumber;
+    uint256 public weekOldBlockNumber;
+    uint256 public blockHeaderLength = 137;
+    bytes32 public hashOfLastSubmittedBlock = keccak256(PersonalMessagePrefixBytes,"16","BankexFoundation");
+
+    uint256 constant SignatureLength = 65;
+    uint256 constant BlockNumberLength = 4;
+    uint256 constant TxNumberLength = 4;
+    uint256 constant TxTypeLength = 1;
+    uint256 constant TxOutputNumberLength = 1;
+    uint256 constant PreviousHashLength = 32;
+    uint256 constant MerkleRootHashLength = 32;
+    bytes constant PersonalMessagePrefixBytes = "\x19Ethereum Signed Message:\n";
+    uint256 constant PreviousBlockPersonalHashLength = BlockNumberLength +
+                                                    TxNumberLength +
+                                                    PreviousHashLength +
+                                                    MerkleRootHashLength +
+                                                    SignatureLength;
+    uint256 constant NewBlockPersonalHashLength = BlockNumberLength +
+                                                    TxNumberLength +
+                                                    PreviousHashLength +
+                                                    MerkleRootHashLength;
 
     struct BlockInformation {
-        uint256 submittedAt;
+        uint32 numberOfTransactions;
+        uint192 submittedAt;
         bytes32 merkleRootHash;
     }
 
     mapping (uint256 => BlockInformation) public blocks;
     event BlockHeaderSubmitted(uint256 indexed _blockNumber, bytes32 indexed _merkleRoot);
 
-    function PlasmaBlockStorage() public {
-        owner = msg.sender;
+    constructor() public {
+        owner = PlasmaParentInterface(msg.sender);
     }
 
     modifier onlyOwner() {
-        require(msg.sender == owner);
+        require(msg.sender == address(owner));
         _;
     }
 
     function setOwner(address _newOwner) onlyOwner public {
         require(_newOwner != address(0));
-        owner = _newOwner;
+        owner = PlasmaParentInterface(_newOwner);
     }
 
     function incrementWeekOldCounter() public {
-        while (blocks[weekOldBlockNumber].submittedAt < now - (1 weeks)) {
+        while (uint256(blocks[weekOldBlockNumber].submittedAt) < block.timestamp - (1 weeks)) {
             if (blocks[weekOldBlockNumber].submittedAt == 0)
                 break;
             weekOldBlockNumber++;
         }
     }
 
-    function storeBlock(uint256 _blockNumber, bytes32 _merkleRoot) onlyOwner public returns (bool success) {
+    function submitBlockHeaders(bytes _headers) onlyOwner public returns (bool success) {
+        require(_headers.length % blockHeaderLength == 0);
+        ByteSlice.Slice memory slice = _headers.slice();
+        ByteSlice.Slice memory reusableSlice;
+        uint256[] memory reusableSpace = new uint256[](5);
+        bytes32 lastBlockHash = hashOfLastSubmittedBlock;
+        uint256 _lastBlockNumber = lastBlockNumber;
+        for (uint256 i = 0; i < _headers.length/blockHeaderLength; i++) {
+            reusableSlice = slice.slice(i*blockHeaderLength, (i+1)*blockHeaderLength);
+            reusableSpace[0] = 0;
+            reusableSpace[1] = BlockNumberLength;
+            reusableSpace[2] = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toUint(); //blockNumber
+            require(reusableSpace[2] == _lastBlockNumber+1+i);
+            reusableSpace[0] = reusableSpace[1];
+            reusableSpace[1] += TxNumberLength;
+            reusableSpace[3] = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toUint(); //numberOfTransactions
+            reusableSpace[0] = reusableSpace[1];
+            reusableSpace[1] += PreviousHashLength;
+            bytes32 previousBlockHash = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toBytes32();
+            require(previousBlockHash == lastBlockHash);
+            reusableSpace[0] = reusableSpace[1];
+            reusableSpace[1] += MerkleRootHashLength;
+            bytes32 merkleRootHash = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toBytes32();
+            reusableSpace[0] = reusableSpace[1];
+            reusableSpace[1] += 1;
+            reusableSpace[4] = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toUint();
+            if (reusableSpace[4] < 27) {
+                reusableSpace[4] = reusableSpace[4]+27;
+            }
+            reusableSpace[0] = reusableSpace[1];
+            reusableSpace[1] += 32;
+            bytes32 r = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toBytes32();
+            reusableSpace[0] = reusableSpace[1];
+            reusableSpace[1] += 32;
+            bytes32 s = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toBytes32();
+            bytes32 newBlockHash = keccak256(PersonalMessagePrefixBytes, NewBlockPersonalHashLength.uintToBytes(), uint32(reusableSpace[2]), uint32(reusableSpace[3]), previousBlockHash, merkleRootHash);
+            address signer = ecrecover(newBlockHash, uint8(reusableSpace[4]), r, s);
+            require(owner.isOperator(signer));
+            lastBlockHash = keccak256(PersonalMessagePrefixBytes, PreviousBlockPersonalHashLength.uintToBytes(), reusableSlice.toBytes());
+            storeBlock(reusableSpace[2], reusableSpace[3], merkleRootHash);
+        }
+        hashOfLastSubmittedBlock = lastBlockHash;
+        return true;
+    }
+
+
+    function storeBlock(uint256 _blockNumber, uint256 _numberOfTransactions, bytes32 _merkleRoot) internal returns (bool success) {
         incrementWeekOldCounter();
         require(_blockNumber == lastBlockNumber + 1);
         BlockInformation storage newBlockInformation = blocks[_blockNumber];
         newBlockInformation.merkleRootHash = _merkleRoot;
-        newBlockInformation.submittedAt = now;
+        newBlockInformation.submittedAt = uint192(block.timestamp);
+        newBlockInformation.numberOfTransactions = uint32(_numberOfTransactions);
         lastBlockNumber = _blockNumber;
-        BlockHeaderSubmitted(_blockNumber, _merkleRoot);
+        emit BlockHeaderSubmitted(_blockNumber, _merkleRoot);
         return true;
     }
 
-    function storeBlocks(uint256[] _blockNumbers, bytes32[] _merkleRoots) public returns (bool success) {
-        require(_blockNumbers.length == _merkleRoots.length);
-        require(_blockNumbers.length != 0);
-        incrementWeekOldCounter();
+    // function storeBlocks(uint256[] _blockNumbers, uint256[] _numbersOfTransactions, bytes32[] _merkleRoots) public returns (bool success) {
+    //     require(_blockNumbers.length == _merkleRoots.length);
+    //     require(_blockNumbers.length == _numbersOfTransactions.length);
+    //     require(_blockNumbers.length != 0);
+    //     incrementWeekOldCounter();
 
-        uint256 currentCounter = lastBlockNumber;
-        for (uint256 i = 0; i < _blockNumbers.length; i++) {
-            require(_blockNumbers[i] == currentCounter + 1);   
-            currentCounter = _blockNumbers[i];
-            BlockInformation storage newBlockInformation = blocks[currentCounter];
-            newBlockInformation.merkleRootHash = _merkleRoots[i];
-            newBlockInformation.submittedAt = now;
-            BlockHeaderSubmitted(_blockNumbers[i], _merkleRoots[i]);
-        }
-        lastBlockNumber = currentCounter;
-        return true;
-    }
+    //     uint256 currentCounter = lastBlockNumber;
+    //     for (uint256 i = 0; i < _blockNumbers.length; i++) {
+    //         require(_blockNumbers[i] == currentCounter + 1);   
+    //         currentCounter = _blockNumbers[i];
+    //         BlockInformation storage newBlockInformation = blocks[currentCounter];
+    //         newBlockInformation.merkleRootHash = _merkleRoots[i];
+    //         newBlockInformation.submittedAt = uint192(block.timestamp + i);
+    //         newBlockInformation.numberOfTransactions = uint32(_numbersOfTransactions[i]);
+    //         emit BlockHeaderSubmitted(_blockNumbers[i], _merkleRoots[i]);
+    //     }
+    //     lastBlockNumber = currentCounter;
+    //     return true;
+    // }
 
-    function getBlockInformation(uint32 _blockNumber) public view returns (uint256 submittedAt, bytes32 merkleRoot) {
+    function getBlockInformation(uint32 _blockNumber) public view returns (uint256 submittedAt, uint32 numberOfTransactions, bytes32 merkleRoot) {
         BlockInformation storage blockInformation = blocks[uint256(_blockNumber)];
-        return (blockInformation.submittedAt, blockInformation.merkleRootHash);
+        return (blockInformation.submittedAt, blockInformation.numberOfTransactions, blockInformation.merkleRootHash);
     }
 
     function getMerkleRoot(uint32 _blockNumber) public view returns (bytes32 merkleRoot) {
@@ -88,7 +168,11 @@ contract PlasmaBlockStorage {
 
     function getSubmissionTime(uint32 _blockNumber) public view returns (uint256 submittedAt) {
         BlockInformation storage blockInformation = blocks[uint256(_blockNumber)];
-        return blockInformation.submittedAt;
+        return uint256(blockInformation.submittedAt);
     }
 
+    function getNumberOfTransactions(uint32 _blockNumber) public view returns (uint32 numberOfTransaction) {
+        BlockInformation storage blockInformation = blocks[uint256(_blockNumber)];
+        return blockInformation.numberOfTransactions;
+    }
 }

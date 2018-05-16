@@ -81,6 +81,8 @@ contract('PlasmaParent', async (accounts) => {
 
     it('submit block', async () => {
         let lastBlockNumber = await storage.lastBlockNumber()
+        let lastBlockHash = await storage.hashOfLastSubmittedBlock()
+        lastBlockHash = await plasma.hashOfLastSubmittedBlock()
         assert(lastBlockNumber.toString() == "0");
         const submissionReceipt = await plasma.submitBlockHeaders(blockOne);
         lastBlockNumber = await storage.lastBlockNumber();

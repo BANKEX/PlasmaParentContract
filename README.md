@@ -4,8 +4,6 @@
 
 # TODO
 
-- Check that an address that deposits money has no code associated with it.
-- Add a method "deposit to(address _to)" to deposit money from smart-contract to some address with a private key.
 - Add a method to withdraw to address other than "msg.sender" (low priority).
 - Add a zkSNARK to be able to prove knowledge of the private key for an Ethereum address (for fun).
 - Evaluate a use of external WithdrawRecord/DepositRecord holder the same way as BlockStorage works, so the main contract can migrate (although it implies partial loss of trust or should be done by a commitee of "trusted" parties). Most likely a V2 ABI encoding support is necessary.

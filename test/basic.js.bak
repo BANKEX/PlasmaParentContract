@@ -1,0 +1,92 @@
+const PlasmaParent   = artifacts.require('PlasmaParent');
+const PriorityQueue  = artifacts.require('PriorityQueue');
+const BlockStorage = artifacts.require("PlasmaBlockStorage");
+const Challenger = artifacts.require("PlasmaChallenges");
+
+const ethUtil = require('ethereumjs-util')
+// const t = require('truffle-test-utils')
+
+
+
+const Web3 = require('web3');
+const web3 = new Web3();
+
+web3.setProvider('http://127.0.0.1:9545')
+
+// // ganeche features
+// web3.extend({
+//     property: 'evm',
+//     methods: [{
+//         name: 'increaseTime',
+//         call: 'evm_increaseTime',
+//         params: 1,
+//         inputFormatter: [null]
+//     },{
+//         name: 'mine',
+//         call: 'evm_mine'
+//     }]
+// })
+
+contract('PlasmaParent', async (accounts) => {
+    const operatorAddress = ""
+    const blockOne = "0x0000 0001 0000 0001 0867 e6b0 df6a 2291 \
+    abb4 6521 e681 3f31 766b 7ae3 0909 8ed0 \
+    7bb0 0600 9ac7 613c df8a 6ee7 0de2 e839 \
+    87ac 7aab a2a9 2e01 61a7 9970 6944 e123 \
+    da2b abb8 c9dc 659d 1cf2 fb4f 87b7 16f6 \
+    7554 fe23 c1ea 9956 b427 9409 40b7 751d \
+    50f7 d755 74c5 9bdd dd38 8202 d051 0e70 \
+    f5a5 a652 2ac0 3bf1 bd7e 36bf 007b 577b \
+    6ac0 b8a8 f10f fb5d 12f8 c3b8 c1f8 bf84 \
+    0000 0000 b8b8 f8b6 b871 f86f 04af eead \
+    ec84 0000 0000 8400 0000 0000 a000 0000 \
+    0000 0000 0000 0000 0000 0000 0000 0000 \
+    0000 0000 0000 0000 0000 0027 13b8 3cf8 \
+    3ab8 38f7 0094 6394 b37c f80a 7358 b380 \
+    68f0 ca47 60ad 4998 3a1b a000 0000 0000 \
+    0000 0000 0000 0000 0000 0000 0000 0000 \
+    0000 0000 2386 f26f c100 001b a02d 3e3a \
+    1751 35cd 7929 8add 1697 613c 29dd 25ad \
+    6f29 8c5c 28f4 4f97 80aa 92c9 7da0 62e8 \
+    f5ac 0ee3 4cbd 943b 9dc9 0fed d453 96db \
+    9220 7491 42c2 dd37 2cc5 1790 db6a ".replace(/\s/g, "").replace("\n", "").substr(0, 276);
+
+    let queue
+    let plasma;
+    let storage;
+    let challenger;
+    const allLocalAccounts = await web3.eth.getAccounts();
+    const operator = allLocalAccounts[0];
+    const oper = accounts[0]
+
+    beforeEach(async () => {
+        const web3BlockStorage = new web3.eth.Contract(BlockStorage.abi)
+        storage = await web3BlockStorage.deploy({data: BlockStorage.bytecode}).send({from: operator})
+        const web3PriorityQueue = new web3.eth.Contract(PriorityQueue.abi)
+        queue = await web3PriorityQueue.deploy({data: PriorityQueue.bytecode}).send({from: operator})
+        const web3PlasmaParent = new web3.eth.Contract(PlasmaParent.abi)
+        plasma = await web3PlasmaParent.deploy({data: PlasmaParent.bytecode}, queue.address, storage.address).send({from: operator})
+        const web3Challenger = new web3.eth.Contract(Challenger.abi)
+        challenger = await web3Challenger.deploy({data: Challenger.bytecode}, queue.address, storage.address).send({from: operator})
+        await storage.methods.setOwner(plasma.address).send({from: operator})
+        await queue.methods.setOwner(plasma.address).send({from: operator})
+        await plasma.setChallenger(challenger.address).send({from: operator})
+        // storage = await BlockStorage.new({from: operator})
+        // queue  = await PriorityQueue.new({from: operator})
+        // plasma = await PlasmaParent.new(queue.address, storage.address, {from: operator})
+        // challenger = await Challenger.new(queue.address, storage.address, {from: operator})
+        // await storage.setOwner(plasma.address, {from: operator})
+        // await queue.setOwner(plasma.address, {from: operator})
+        // await plasma.setChallenger(challenger.address, {from: operator})
+        // await plasma.setOperator(operatorAddress);
+    })
+
+    it('submit block', async () => {
+        let lastBlockNumber = await storage.methods.lastBlockNumber()
+        assert(lastBlockNumber.toString() == "0");
+        await plasma.methods.submitBlockHeaders(blockOne).send({from:operator});
+        lastBlockNumber = await storage.methonds.lastBlockNumber();
+        assert(lastBlockNumber.toString() == "1");
+    })
+
+})
