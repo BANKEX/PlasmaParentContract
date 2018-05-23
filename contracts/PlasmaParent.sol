@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 import {Conversion} from "./Conversion.sol";
 import {ByteSlice} from "./ByteSlice.sol";
@@ -32,6 +32,7 @@ contract PlasmaParent {
     uint256 public DepositWithdrawCollateral = 0;
     uint256 public WithdrawCollateral = 0;
     uint256 public constant DepositWithdrawDelay = (72 hours);
+    uint256 public constant ShowMeTheInputChallengeDelay = (72 hours);
     uint256 public constant WithdrawDelay = (168 hours);
     uint256 public constant ExitDelay = (336 hours);
 
@@ -40,25 +41,7 @@ contract PlasmaParent {
     uint256 constant TxTypeMerge = 2;
     uint256 constant TxTypeFund = 4;
 
-    // uint256 constant SignatureLength = 65;
-    // uint256 constant BlockNumberLength = 4;
-    // uint256 constant TxNumberLength = 4;
-    // uint256 constant TxTypeLength = 1;
-    // uint256 constant TxOutputNumberLength = 1;
-    // uint256 constant PreviousHashLength = 32;
-    // uint256 constant MerkleRootHashLength = 32;
-    // bytes constant PersonalMessagePrefixBytes = "\x19Ethereum Signed Message:\n";
-    // uint256 constant PreviousBlockPersonalHashLength = BlockNumberLength +
-    //                                                 TxNumberLength +
-    //                                                 PreviousHashLength +
-    //                                                 MerkleRootHashLength +
-    //                                                 SignatureLength;
-    // uint256 constant NewBlockPersonalHashLength = BlockNumberLength +
-    //                                                 TxNumberLength +
-    //                                                 PreviousHashLength +
-    //                                                 MerkleRootHashLength;
-
-    mapping (uint256 => uint256) public transactionsSpendingRecords;
+    mapping (uint256 => uint256) public transactionsSpendingRecords; // input index => output index
 
     // deposits
 
@@ -130,13 +113,27 @@ contract PlasmaParent {
     mapping(address => uint256[]) public allWithdrawRecordsForUser;
     mapping(uint256 => WithdrawBuyoutOffer) public withdrawBuyoutOffers;
 
+// interactive "Show me the input!" challenge
 
-// end of storage declarations ---------------------------
+    uint8 constant ShowInputChallengeNoRecord = 0;
+    uint8 constant ShowInputChallengeStarted = 1;
+    uint8 constant ShowInputChallengeResponded = 2;
+    uint8 constant ShowInputChallengeCompleted = 3;
 
 
-    // event Debug(bool indexed _success, bytes32 indexed _b, address indexed _signer);
-    // event DebugUint(uint256 indexed _1, uint256 indexed _2, uint256 indexed _3);
-    // event SigEvent(address indexed _signer, bytes32 indexed _r, bytes32 indexed _s);
+    struct ShowInputChallenge {
+        address from;
+        uint8 status;
+        uint64 timestamp;
+    }
+
+    mapping(uint256 => ShowInputChallenge) showInputChallengeStatuses;
+    event ShowInputChallengeInitiatedEvent(address indexed _from,
+                                uint256 indexed _inputIndex);
+    event ShowInputChallengeRespondedEvent(address indexed _from,
+                                uint256 indexed _inputIndex,
+                                uint256 indexed _outputIndex);
+// end of storage declarations ---------------------------  
 
     constructor(address _priorityQueue, address _blockStorage) public payable {
         require(_priorityQueue != address(0));
@@ -162,7 +159,6 @@ contract PlasmaParent {
     }
 
     function setErrorAndLastFoundBlock(uint32 _lastValidBlock, bool _transferReward) internal returns (bool success) {
-        require(msg.sender == challengesContract);
         if (!plasmaErrorFound) {
             plasmaErrorFound = true;
         }
@@ -186,6 +182,7 @@ contract PlasmaParent {
     }
 
     function submitBlockHeaders(bytes _headers) public returns (bool success) {
+        require(!plasmaErrorFound);
         return blockStorage.submitBlockHeaders(_headers);
     }
 
@@ -222,6 +219,7 @@ contract PlasmaParent {
     }
 
     function depositFor(address _for) payable public returns (uint256 idx) {
+        require(msg.value > 0);
         require(!plasmaErrorFound);
         if (block.number != lastEthBlockNumber) {
             depositCounterInBlock = 0;
@@ -240,7 +238,7 @@ contract PlasmaParent {
     }
 
     function startDepositWithdraw(uint256 depositIndex) public payable returns (bool success) {
-        require(block.number >= (depositIndex >> 32) + 500); 
+        //require(block.number >= (depositIndex >> 32) + 500);
         require(msg.value == DepositWithdrawCollateral);
         totalAmountDeposited = totalAmountDeposited + int256(msg.value);
         DepositRecord storage record = depositRecords[depositIndex];
@@ -304,7 +302,6 @@ contract PlasmaParent {
                             bytes _merkleProof)
     public payable returns(bool success, uint256 withdrawIndex) {
         require(msg.value == WithdrawCollateral);
-        totalAmountDeposited = totalAmountDeposited + int256(msg.value);
         if (plasmaErrorFound) {
             return startExit(_plasmaBlockNumber, _plasmaTxNumInBlock, _outputNumber, _plasmaTransaction, _merkleProof);
         }
@@ -317,6 +314,7 @@ contract PlasmaParent {
         uint256 index;
         WithdrawRecord memory record;
         (record, index) = populateWithdrawRecordFromOutput(output, _plasmaBlockNumber, _plasmaTxNumInBlock, _outputNumber, true);
+        require(transactionsSpendingRecords[index % (1 << 128)] == 0);
         allWithdrawRecordsForUser[msg.sender].push(index);
         addTotalPendingExit(int256(record.amount));
         emit WithdrawRequestAcceptedEvent(output.recipient, index);
@@ -335,10 +333,12 @@ contract PlasmaParent {
         require(TX.txType == TxTypeFund || TX.txType == TxTypeSplit || TX.txType == TxTypeMerge);
         require(TX.txType == TxTypeFund || TX.sender != address(0));
         BankexPlasmaTransaction.TransactionOutput memory output = TX.outputs[_outputNumber];
+        require(_plasmaTxNumInBlock == TX.txNumberInBlock);
         require(output.recipient == msg.sender);
         uint256 index;
         WithdrawRecord memory record;
         (record, index) = populateWithdrawRecordFromOutput(output, _plasmaBlockNumber, _plasmaTxNumInBlock, _outputNumber, true);
+        require(transactionsSpendingRecords[index % (1 << 128)] == 0);
         uint256 priorityModifier = uint256(_plasmaBlockNumber) << 192;
         if (_plasmaBlockNumber < blockStorage.weekOldBlockNumber()) {
             priorityModifier = blockStorage.weekOldBlockNumber() << 192;
@@ -357,9 +357,18 @@ contract PlasmaParent {
                             bytes _merkleProof,
                             uint256 _withdrawIndex //references withdraw
                             ) public returns (bool success) {
-        uint256 txIndex = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber);
         WithdrawRecord storage record = withdrawRecords[_withdrawIndex];
         require(record.status == WithdrawStatusStarted);
+        if (transactionsSpendingRecords[_withdrawIndex % (1 << 128)] != 0) {
+            record.status = WithdrawStatusChallenged;
+            emit WithdrawChallengedEvent(msg.sender, _withdrawIndex);
+            addTotalPendingExit(-int256(record.amount));
+            if (record.hasCollateral) {
+                msg.sender.transfer(WithdrawCollateral);
+            }
+            return true;
+        }
+        uint256 txIndex = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber);
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
         BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
         require(TX.txNumberInBlock == _plasmaTxNumInBlock);
@@ -379,6 +388,7 @@ contract PlasmaParent {
     function finalizeWithdraw(uint256 withdrawIndex) public returns(bool success) {
         WithdrawRecord storage record = withdrawRecords[withdrawIndex];
         require(record.status == WithdrawStatusStarted);
+        require(transactionsSpendingRecords[withdrawIndex % (1 << 128)] == 0);
         // if (plasmaErrorFound && record.blockNumber > lastValidBlock) {
         if (plasmaErrorFound) { // do not allow to finalize withdrawals if error is found even if an error was in a block later than this withdraw references
             address to = address(0);
@@ -456,21 +466,21 @@ contract PlasmaParent {
         return (record, withdrawIndex);
     }
 
-    function offerAnOutputBuyout(uint256 _withdrawIndex, uint256 _beneficiary) public payable returns (bool success) {
+    function offerOutputBuyout(uint256 _withdrawIndex, address _beneficiary) public payable returns (bool success) {
         require(msg.value > 0);
         WithdrawRecord storage record = withdrawRecords[_withdrawIndex];
         require(record.status == WithdrawStatusStarted);
         WithdrawBuyoutOffer storage offer = withdrawBuyoutOffers[_withdrawIndex];
         emit WithdrawBuyoutOffered(_withdrawIndex, msg.sender, msg.value);
         if (offer.from == address(0)) {
-            offer.from = msg.sender;
+            offer.from = _beneficiary;
             offer.amount = msg.value;
             return true;
         } else {
             require(msg.value > offer.amount);
             address oldFrom = offer.from;
             uint256 oldAmount = offer.amount;
-            offer.from = msg.sender;
+            offer.from = _beneficiary;
             offer.amount = msg.value;
             oldFrom.transfer(oldAmount);
             return true;
@@ -501,18 +511,13 @@ contract PlasmaParent {
         assembly {
             memoryPointer := mload(0x40)
             calldatacopy(memoryPointer, 0, calldatasize)
-            let _retVal := delegatecall(sub(gas, 10000), callee, memoryPointer, calldatasize, 0, 0x20)
+            let _retVal := delegatecall(sub(gas, 10000), callee, memoryPointer, calldatasize, 0x60, 0x00)
             x := returndatasize
-            switch _retVal case 0 { revert(0,0) } default { return(0, x) }
+            returndatacopy(0x60, 0, x)
+            switch _retVal case 0 { revert(0,0) } default { return(0x60, x) }
         }
     }
 
-
-    // event DoubleSpendProovedEvent(uint256 indexed _txIndex1, uint256 indexed _txIndex2);
-    // event SpendAndWithdrawProovedEvent(uint256 indexed _txIndex, uint256 indexed _withdrawIndex);
-
-    // event FundingWithoutDepositEvent(uint256 indexed _txIndex, uint256 indexed _depositIndex);
-    // event DoubleFundingEvent(uint256 indexed _txIndex1, uint256 indexed _txIndex2);
 
 // Convenience functions
 

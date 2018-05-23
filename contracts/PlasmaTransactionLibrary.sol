@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 import {RLP} from "./RLP.sol";
 import {Conversion} from "./Conversion.sol";
@@ -14,6 +14,11 @@ library BankexPlasmaTransaction {
     uint256 public constant TxNumberLength = 4;
     uint256 public constant TxTypeLength = 1;
     uint256 public constant TxOutputNumberLength = 1;
+
+    uint256 constant TxTypeNull = 0;
+    uint256 constant TxTypeSplit = 1;
+    uint256 constant TxTypeMerge = 2;
+    uint256 constant TxTypeFund = 4;
 
     struct TransactionInput {
         uint32 blockNumber;
@@ -41,7 +46,7 @@ library BankexPlasmaTransaction {
 
     function createPersonalMessageTypeHash(bytes memory message) internal pure returns (bytes32 msgHash) {
         bytes memory lengthBytes = message.length.uintToBytes();
-        return keccak256(PersonalMessagePrefixBytes, lengthBytes, message);
+        return keccak256(abi.encodePacked(PersonalMessagePrefixBytes, lengthBytes, message));
     }
 
     function checkForInclusionIntoBlock(bytes32 _merkleRoot, bytes _plasmaTransaction, bytes _merkleProof) internal pure returns (bool included) {
@@ -68,9 +73,9 @@ library BankexPlasmaTransaction {
             }
             rightElementProvided = uint8(bytes1(0xff)&proof[i-32]);
             if (rightElementProvided > 0) {
-                h = keccak256(h, elProvided);
+                h = keccak256(abi.encodePacked(h, elProvided));
             } else {
-                h = keccak256(elProvided, h);
+                h = keccak256(abi.encodePacked(elProvided, h));
             }
         }
         return h == root;
@@ -81,23 +86,22 @@ library BankexPlasmaTransaction {
         if (!item._validate()) {
             return constructEmptyTransaction();
         }
+        if (!item.isList()) {
+            return constructEmptyTransaction();
+        }
+        uint256 numItems = item.items();
+        if (numItems != 2) {
+            return constructEmptyTransaction();
+        }
         RLP.Iterator memory iter = item.iterator();
-        if (!iter.hasNext()) {
-            return constructEmptyTransaction();
-        }
         item = iter.next();
-        uint256 numInBlock;
-        bool valid;
-        (numInBlock, valid) = item.toUint();
+        (uint256 numInBlock, bool valid) = item.toUint(TxNumberLength);
         if (!valid) {
-            return constructEmptyTransaction();
-        }
-        if (!iter.hasNext()) {
             return constructEmptyTransaction();
         }
         item = iter.next();
         TX = signedPlasmaTransactionFromRLPItem(item);
-        if (TX.isWellFormed) {
+        if (!TX.isWellFormed) {
             return constructEmptyTransaction();
         }
         TX.txNumberInBlock = uint32(numInBlock);
@@ -108,32 +112,36 @@ library BankexPlasmaTransaction {
         if (!_item.isList()) {
             return constructEmptyTransaction();
         }
-        RLP.Iterator memory iter = _item.iterator();
-        if (!iter.hasNext()) {
+        uint256 numItems = _item.items();
+        if (numItems != 4) {
             return constructEmptyTransaction();
         }
+        RLP.Iterator memory iter = _item.iterator();
         RLP.RLPItem memory item = iter.next();
         bytes memory rawSignedPart = item.toBytes();
         bytes32 persMessageHashWithoutNumber = createPersonalMessageTypeHash(rawSignedPart);
         TX = plasmaTransactionFromRLPItem(item);
-        if (TX.isWellFormed) {
-            return constructEmptyTransaction();
-        }
-        if (!iter.hasNext()) {
+        if (!TX.isWellFormed) {
             return constructEmptyTransaction();
         }
         item = iter.next();
-        uint8 v = uint8(item.toUint());
-        if (!iter.hasNext()) {
+        (uint256 v_tmp, bool valid) = item.toUint(1);
+        uint8 v = uint8(v_tmp);
+        if (!valid) {
             return constructEmptyTransaction();
         }
         item = iter.next();
-        bytes32 r = item.toBytes32();
-        if (!iter.hasNext()) {
+        bytes32 r;
+        (r, valid) = item.toBytes32();
+        if (!valid) {
             return constructEmptyTransaction();
         }
         item = iter.next();
-        bytes32 s = item.toBytes32();
+        bytes32 s;
+        (s, valid) = item.toBytes32();
+        if (!valid) {
+            return constructEmptyTransaction();
+        }
         TX.sender = ecrecover(persMessageHashWithoutNumber, v, r, s);
         if (TX.sender == address(0)) {
             return constructEmptyTransaction();
@@ -145,49 +153,61 @@ library BankexPlasmaTransaction {
         if (!_item.isList()) {
             return constructEmptyTransaction();
         }
+        uint256 numItems = _item.items();
+        if (numItems != 3) {
+            return constructEmptyTransaction();
+        }
         RLP.Iterator memory iter = _item.iterator();
         if (!iter.hasNext()) {
             return constructEmptyTransaction();
         }
         RLP.RLPItem memory item = iter.next(); // transaction type
+        bool reusableValidFlag = false;
         uint256[] memory reusableSpace = new uint256[](7);
-        reusableSpace[0] = item.toUint();
-        if (!iter.hasNext()) {
+        (reusableSpace[0], reusableValidFlag) = item.toUint(TxTypeLength); //hardcode can be used
+        uint256 txType = reusableSpace[0];
+        if (!(txType == TxTypeFund || txType == TxTypeSplit || txType == TxTypeMerge) ) {
+            return constructEmptyTransaction();
+        }
+        if (!reusableValidFlag) {
             return constructEmptyTransaction();
         }
         item = iter.next();
         if (!item.isList()) {
             return constructEmptyTransaction();
         }
-        RLP.Iterator memory reusableIterator = item.iterator();
-        RLP.Iterator memory reusableIteratorPerItem;
-        if (item.items() == 0) {
+        numItems = item.items();
+        if (numItems == 0) {
             return constructEmptyTransaction();
         }
-        TransactionInput[] memory inputs = new TransactionInput[](item.items());
+        RLP.Iterator memory reusableIterator = item.iterator();
+        RLP.Iterator memory reusableIteratorPerItem;
+        TransactionInput[] memory inputs = new TransactionInput[](numItems);
         reusableSpace[1] = 0;
-        while (reusableIterator.hasNext()) {
-            if (!reusableIterator.next().isList()) {
+        while (reusableIterator.hasNext()) { // go over the inputs
+            item = reusableIterator.next();
+            if (!item.isList()) {
                 return constructEmptyTransaction();
             }
-            reusableIteratorPerItem = reusableIterator.next().iterator();
-            if (!reusableIteratorPerItem.hasNext()) {
+            numItems = item.items();
+            if (numItems != 4) {
                 return constructEmptyTransaction();
             }
-            reusableSpace[2] = reusableIteratorPerItem.next().toUint();
-            if (!reusableIteratorPerItem.hasNext()) {
+            reusableIteratorPerItem = item.iterator();
+            (reusableSpace[2], reusableValidFlag) = reusableIteratorPerItem.next().toUint(BlockNumberLength); // block number
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
-            reusableSpace[3] = reusableIteratorPerItem.next().toUint();
-            if (!reusableIteratorPerItem.hasNext()) {
+            (reusableSpace[3], reusableValidFlag) = reusableIteratorPerItem.next().toUint(TxNumberLength); // tx number in block
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
-            reusableSpace[4] = reusableIteratorPerItem.next().toUint();
-            if (!reusableIteratorPerItem.hasNext()) {
+            (reusableSpace[4], reusableValidFlag) = reusableIteratorPerItem.next().toUint(TxOutputNumberLength); //tx output number in tx
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
-            reusableSpace[5] = reusableIteratorPerItem.next().toUint();
-            if (reusableIteratorPerItem.hasNext()) {
+            (reusableSpace[5], reusableValidFlag) = reusableIteratorPerItem.next().toUint(32); //tx amount
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
             TransactionInput memory input = TransactionInput({
@@ -198,7 +218,7 @@ library BankexPlasmaTransaction {
             });
             inputs[reusableSpace[1]] = input;
             reusableSpace[1]++;
-        }
+        } // now we have completed parsing all the inputs
         if (!iter.hasNext()) {
             return constructEmptyTransaction();
         }
@@ -207,34 +227,41 @@ library BankexPlasmaTransaction {
             return constructEmptyTransaction();
         }
         reusableIterator = item.iterator();
-        if (item.items() == 0) {
+        numItems = item.items();
+        if (numItems == 0) {
             return constructEmptyTransaction();
         }
-        TransactionOutput[] memory outputs = new TransactionOutput[](item.items());
+        TransactionOutput[] memory outputs = new TransactionOutput[](numItems);
         reusableSpace[1] = 0;
-        while (reusableIterator.hasNext()) {
-            if (!reusableIterator.next().isList()) {
+        address reusableRecipient;
+        while (reusableIterator.hasNext()) { // go over outputs
+            item = reusableIterator.next();
+            if (!item.isList()) {
                 return constructEmptyTransaction();
             }
-            reusableIteratorPerItem = reusableIterator.next().iterator();
+            numItems = item.items();
+            if (numItems != 3) {
+                return constructEmptyTransaction();
+            }
+            reusableIteratorPerItem = item.iterator();
             if (!reusableIteratorPerItem.hasNext()) {
                 return constructEmptyTransaction();
             }
-            reusableSpace[2] = reusableIteratorPerItem.next().toUint();
-            if (!reusableIteratorPerItem.hasNext()) {
+            (reusableSpace[2], reusableValidFlag) = reusableIteratorPerItem.next().toUint(TxOutputNumberLength); // output numbber
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
-            address recipient = reusableIteratorPerItem.next().toAddress();
-            if (!reusableIteratorPerItem.hasNext()) {
+            (reusableRecipient, reusableValidFlag) = reusableIteratorPerItem.next().toAddress(); // recipient
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
-            reusableSpace[3] = reusableIteratorPerItem.next().toUint();
-            if (reusableIteratorPerItem.hasNext()) {
+            (reusableSpace[3], reusableValidFlag) = reusableIteratorPerItem.next().toUint(32); //amount
+            if (!reusableValidFlag) {
                 return constructEmptyTransaction();
             }
             TransactionOutput memory output = TransactionOutput({
                 outputNumberInTX: uint8(reusableSpace[2]),
-                recipient: recipient,
+                recipient: reusableRecipient,
                 amount: reusableSpace[3]
             });
             outputs[reusableSpace[1]] = output;
@@ -256,6 +283,16 @@ library BankexPlasmaTransaction {
         index += uint256(_txNumberInBlock) << (TxOutputNumberLength*8);
         index += uint256(_outputNumberInTX);
         return index;
+    }
+
+    function parseTransactionIndex(uint256 _index) internal pure returns (uint32 blockNumber, uint32 txNumberInBlock, uint8 outputNumber) {
+        uint256 idx = _index % (uint256(1) << 128);
+        outputNumber = uint8(idx % (uint256(1) << TxOutputNumberLength*8));
+        idx = idx >> (TxOutputNumberLength*8);
+        txNumberInBlock = uint32(idx % (uint256(1) << TxNumberLength*8));
+        idx = idx >> (TxNumberLength*8);
+        blockNumber = uint32(idx % (uint256(1) << BlockNumberLength*8));
+        return (blockNumber, txNumberInBlock, outputNumber);
     }
 
     function constructEmptyTransaction() internal pure returns (PlasmaTransaction memory TX) {

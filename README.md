@@ -82,6 +82,57 @@ All basic challanges and potential "cheats" for operator or user should be now c
    - balance breaking in transaciton
    - ownership breaking
 
+## List of intended challenges and tests
+- [ ] Block header uploads
+    - [x] should accept one properly signed header
+    - [x] should NOT accept same header twice
+    - [x] should accept two headers in right sequence
+    - [x] should accept two headers in right sequence in the same transaction
+    - [x] should NOT accept two headers in wrong sequence
+    - [x] should NOT accept invalidly signed block header
+    - [x] should NOT accept invalidly signed block header in sequence in one transaction
+    - [x] should propery update two weeks old block number
+    - [x] should check block hashes match in addition to block numbers in sequence
+- [ ] Deposits
+    - [x] should emit deposit event
+    - [x] should allow deposit withdraw process
+    - [ ] should respond to deposit withdraw challenge
+    - [x] should allow successful deposit withdraw
+    - [x] should require bond for deposit withdraw start
+    - [ ] should stop Plasma on duplicate funding transaction
+    - [ ] should stop Plasma on funding without deposit
+    - [ ] should update total deposited amount for all tests above
+    - [ ] should update amount pending exit for all tests above
+- [ ] Withdrawals (normal process)
+    - [ ] should start withdraw with proper proof
+    - [ ] should respond to withdraw challenge
+    - [ ] should allow succesful withdraw
+    - [ ] should require bond for withdraw start 
+    - [ ] should return bond on succeful withdraw
+    - [ ] should return bond and prevent withdraw if Plasma was stopped in the meantime
+    - [ ] should update amount pending withdraw for all tests above
+    - [ ] should update total amount deposited for all tests above
+- [ ] Exits (when Plasma is stopped)
+    - [ ] should put withdraw in the quequ
+    - [ ] should maintain priority in the queue
+    - [ ] should give the same priority for blocks that are older than 2 weeks
+    - [ ] should respond to exit prevention challenge
+    - [ ] should allow succesful exit
+    - [ ] should update amount pending withdraw for all tests above
+    - [ ] should update total amount deposited for all tests above
+- [ ] Challenges
+    - [x] Invalid transaction in block (unserializable)
+    - [x] should NOT stop on valid transaction (not malformed) in block
+    - [x] Transaction in block references the future
+    - [x] Transaction references an output with tx number larger, than number in transaction in this UTXO block
+    - [ ] Transaction has higher number that number of transactions in block
+    - [ ] Transaction is malformed (balance breaking)
+    - [ ] Transaction is malformed (merge by Plasma owner)
+    - [ ] Double spend
+    - [ ] Spend without owner signature
+    - [ ] UTXO was succesfully withdrawn and than spent in Plasma
+    - [ ] Two transactions in block have the same number
+    - [ ] Should have interactive challenge (show me the referenced input)
 
 ## Contribution
 

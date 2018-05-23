@@ -1,7 +1,7 @@
 const TruffleContract = require('truffle-contract');
 const Web3 = require("web3");
 
-async function deployContracts(web3ProviderAddress) {
+async function deployContracts(web3ProviderAddress, operatorAddress) {
     const web3 = new Web3(web3ProviderAddress);
     const PriorityQueueContract = new TruffleContract(require("../build/contracts/PriorityQueue.json"));
     const BlockStorageContract = new TruffleContract(require("../build/contracts/PlasmaBlockStorage.json"));
@@ -42,4 +42,4 @@ async function deployContracts(web3ProviderAddress) {
 
 module.exports = deployContracts;
 
-deployContracts("http://127.0.0.1:8545").then();
+// deployContracts("http://127.0.0.1:8545").then();

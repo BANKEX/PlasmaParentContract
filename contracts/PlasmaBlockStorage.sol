@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 import {PlasmaParentInterface} from "./PlasmaParent.sol";
 import {Conversion} from "./Conversion.sol";
@@ -27,7 +27,7 @@ contract PlasmaBlockStorage {
     uint256 public lastBlockNumber;
     uint256 public weekOldBlockNumber;
     uint256 public blockHeaderLength = 137;
-    bytes32 public hashOfLastSubmittedBlock = keccak256(PersonalMessagePrefixBytes,"16","BankexFoundation");
+    bytes32 public hashOfLastSubmittedBlock = keccak256(abi.encodePacked(PersonalMessagePrefixBytes,"16","BankexFoundation"));
 
     uint256 constant SignatureLength = 65;
     uint256 constant BlockNumberLength = 4;
@@ -49,7 +49,7 @@ contract PlasmaBlockStorage {
 
     struct BlockInformation {
         uint32 numberOfTransactions;
-        uint192 submittedAt;
+        uint64 submittedAt;
         bytes32 merkleRootHash;
     }
 
@@ -58,6 +58,7 @@ contract PlasmaBlockStorage {
 
     constructor() public {
         owner = PlasmaParentInterface(msg.sender);
+        blocks[weekOldBlockNumber].submittedAt = uint64(block.timestamp);
     }
 
     modifier onlyOwner() {
@@ -71,10 +72,16 @@ contract PlasmaBlockStorage {
     }
 
     function incrementWeekOldCounter() public {
-        while (uint256(blocks[weekOldBlockNumber].submittedAt) < block.timestamp - (1 weeks)) {
-            if (blocks[weekOldBlockNumber].submittedAt == 0)
+        uint256 ts = block.timestamp - (1 weeks);
+        uint256 localCounter = weekOldBlockNumber;
+        while (uint256(blocks[localCounter].submittedAt) <= ts) {
+            if (blocks[localCounter].submittedAt == 0) {
                 break;
-            weekOldBlockNumber++;
+            }
+            localCounter++;
+        }
+        if (localCounter != weekOldBlockNumber) {
+            weekOldBlockNumber = localCounter - 1;
         }
     }
 
@@ -113,23 +120,23 @@ contract PlasmaBlockStorage {
             reusableSpace[0] = reusableSpace[1];
             reusableSpace[1] += 32;
             bytes32 s = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toBytes32();
-            bytes32 newBlockHash = keccak256(PersonalMessagePrefixBytes, NewBlockPersonalHashLength.uintToBytes(), uint32(reusableSpace[2]), uint32(reusableSpace[3]), previousBlockHash, merkleRootHash);
+            bytes32 newBlockHash = keccak256(abi.encodePacked(PersonalMessagePrefixBytes, NewBlockPersonalHashLength.uintToBytes(), uint32(reusableSpace[2]), uint32(reusableSpace[3]), previousBlockHash, merkleRootHash));
             address signer = ecrecover(newBlockHash, uint8(reusableSpace[4]), r, s);
             require(owner.isOperator(signer));
-            lastBlockHash = keccak256(PersonalMessagePrefixBytes, PreviousBlockPersonalHashLength.uintToBytes(), reusableSlice.toBytes());
-            storeBlock(reusableSpace[2], reusableSpace[3], merkleRootHash);
+            lastBlockHash = keccak256(abi.encodePacked(PersonalMessagePrefixBytes, PreviousBlockPersonalHashLength.uintToBytes(), reusableSlice.toBytes()));
+            storeBlock(reusableSpace[2], reusableSpace[3], merkleRootHash, i);
         }
         hashOfLastSubmittedBlock = lastBlockHash;
         return true;
     }
 
 
-    function storeBlock(uint256 _blockNumber, uint256 _numberOfTransactions, bytes32 _merkleRoot) internal returns (bool success) {
+    function storeBlock(uint256 _blockNumber, uint256 _numberOfTransactions, bytes32 _merkleRoot, uint256 _timeOffset) internal returns (bool success) {
         incrementWeekOldCounter();
         require(_blockNumber == lastBlockNumber + 1);
         BlockInformation storage newBlockInformation = blocks[_blockNumber];
         newBlockInformation.merkleRootHash = _merkleRoot;
-        newBlockInformation.submittedAt = uint192(block.timestamp);
+        newBlockInformation.submittedAt = uint64(block.timestamp + _timeOffset);
         newBlockInformation.numberOfTransactions = uint32(_numberOfTransactions);
         lastBlockNumber = _blockNumber;
         emit BlockHeaderSubmitted(_blockNumber, _merkleRoot);

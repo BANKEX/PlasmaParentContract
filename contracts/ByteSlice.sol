@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 library ByteSlice {
 
@@ -286,8 +286,8 @@ library ByteSlice {
     }
 
     function toUint(Slice memory self) internal pure returns (uint256 data) {
-        var sliceLength = self._unsafe_length;
-        var rStartPos = self._unsafe_memPtr;
+        uint256 sliceLength = self._unsafe_length;
+        uint256 rStartPos = self._unsafe_memPtr;
         if (sliceLength > 32 || sliceLength == 0)
             revert();
         assembly {
@@ -296,8 +296,8 @@ library ByteSlice {
     }
 
     function toBytes32(Slice memory self) internal pure returns (bytes32 data) {
-        var sliceLength = self._unsafe_length;
-        var rStartPos = self._unsafe_memPtr;
+        uint256 sliceLength = self._unsafe_length;
+        uint256 rStartPos = self._unsafe_memPtr;
         if (sliceLength != 32)
             revert();
         assembly {

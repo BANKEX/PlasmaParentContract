@@ -1,9 +1,9 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 library Conversion {
 
     function uintToBytes(uint256 self) internal pure returns (bytes memory s) {
-        uint maxlength = 100;
+        uint256 maxlength = 100;
         bytes memory reversed = new bytes(maxlength);
         uint256 i = 0;
         while (self != 0) {

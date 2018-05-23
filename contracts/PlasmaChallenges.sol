@@ -1,4 +1,4 @@
-pragma solidity ^0.4.23;
+pragma solidity ^0.4.24;
 
 import {BankexPlasmaTransaction} from "./PlasmaTransactionLibrary.sol";
 import {PlasmaBlockStorageInterface} from "./PlasmaBlockStorage.sol";
@@ -26,6 +26,7 @@ contract PlasmaChallenges {
     uint256 public DepositWithdrawCollateral = 0;
     uint256 public WithdrawCollateral = 0;
     uint256 public constant DepositWithdrawDelay = (72 hours);
+    uint256 public constant ShowMeTheInputChallengeDelay = (72 hours);
     uint256 public constant WithdrawDelay = (168 hours);
     uint256 public constant ExitDelay = (336 hours);
 
@@ -34,25 +35,7 @@ contract PlasmaChallenges {
     uint256 constant TxTypeMerge = 2;
     uint256 constant TxTypeFund = 4;
 
-    // uint256 constant SignatureLength = 65;
-    // uint256 constant BlockNumberLength = 4;
-    // uint256 constant TxNumberLength = 4;
-    // uint256 constant TxTypeLength = 1;
-    // uint256 constant TxOutputNumberLength = 1;
-    // uint256 constant PreviousHashLength = 32;
-    // uint256 constant MerkleRootHashLength = 32;
-    // bytes constant PersonalMessagePrefixBytes = "\x19Ethereum Signed Message:\n";
-    // uint256 constant PreviousBlockPersonalHashLength = BlockNumberLength +
-    //                                                 TxNumberLength +
-    //                                                 PreviousHashLength +
-    //                                                 MerkleRootHashLength +
-    //                                                 SignatureLength;
-    // uint256 constant NewBlockPersonalHashLength = BlockNumberLength +
-    //                                                 TxNumberLength +
-    //                                                 PreviousHashLength +
-    //                                                 MerkleRootHashLength;
-
-    mapping (uint256 => uint256) public transactionsSpendingRecords;
+    mapping (uint256 => uint256) public transactionsSpendingRecords; // input index => output index
 
     // deposits
 
@@ -124,12 +107,28 @@ contract PlasmaChallenges {
     mapping(address => uint256[]) public allWithdrawRecordsForUser;
     mapping(uint256 => WithdrawBuyoutOffer) public withdrawBuyoutOffers;
 
+// interactive "Show me the input!" challenge
 
+    uint8 constant ShowInputChallengeNoRecord = 0;
+    uint8 constant ShowInputChallengeStarted = 1;
+    uint8 constant ShowInputChallengeResponded = 2;
+    uint8 constant ShowInputChallengeCompleted = 3;
+
+
+    struct ShowInputChallenge {
+        address from;
+        uint8 status;
+        uint64 timestamp;
+    }
+
+    mapping(uint256 => ShowInputChallenge) showInputChallengeStatuses;
+    event ShowInputChallengeInitiatedEvent(address indexed _from,
+                                uint256 indexed _inputIndex);
+    event ShowInputChallengeRespondedEvent(address indexed _from,
+                                uint256 indexed _inputIndex,
+                                uint256 indexed _outputIndex);
 // end of storage declarations ---------------------------
 
-    // event Debug(bool indexed _success, bytes32 indexed _b, address indexed _signer);
-    // event DebugUint(uint256 indexed _1, uint256 indexed _2, uint256 indexed _3);
-    // event SigEvent(address indexed _signer, bytes32 indexed _r, bytes32 indexed _s);
 
     constructor(address _priorityQueue, address _blockStorage) public {
         require(_priorityQueue != address(0));
@@ -148,12 +147,12 @@ contract PlasmaChallenges {
     function setChallenger(address _challenger) public returns (bool success) {
         require(msg.sender == owner);
         require(_challenger != address(0));
+        require(challengesContract == address(0));
         challengesContract = _challenger;
         return true;
     }
 
-    function setErrorAndLastFoundBlock(uint32 _lastValidBlock, bool _transferReward) internal returns (bool success) {
-        require(msg.sender == challengesContract);
+    function setErrorAndLastFoundBlock(uint32 _lastValidBlock, bool _transferReward, address _payTo) internal returns (bool success) {
         if (!plasmaErrorFound) {
             plasmaErrorFound = true;
         }
@@ -167,9 +166,72 @@ contract PlasmaChallenges {
         if (operatorsBond != 0 && _transferReward) {
             uint256 bond = operatorsBond;
             operatorsBond = 0;
-            msg.sender.transfer(bond);
+            _payTo.transfer(bond);
         }
         return true;
+    }
+
+
+// Show me the input challenge related functions 
+    function startShowMeTheInputChallenge(uint32 _plasmaBlockNumber, //references and proves ownership on output of original transaction
+                            uint32 _plasmaTxNumInBlock,
+                            uint8 _inputNumber,
+                            bytes _plasmaTransaction,
+                            bytes _merkleProof)
+    public payable returns(bool success, uint256 index) {
+        require(msg.value == WithdrawCollateral);
+        index = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber);
+        ShowInputChallenge storage challenge = showInputChallengeStatuses[index];
+        require(challenge.status == ShowInputChallengeNoRecord);
+        require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
+        BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
+        require(TX.isWellFormed);
+        // require(TX.txType == TxTypeFund || TX.txType == TxTypeSplit || TX.txType == TxTypeMerge);
+        require(TX.txType == TxTypeFund || TX.sender != address(0));
+        BankexPlasmaTransaction.TransactionInput memory input = TX.inputs[_inputNumber];
+        require(input.amount != 0); // just assert that input exists 
+        require(_plasmaTxNumInBlock == TX.txNumberInBlock);
+        challenge.status = ShowInputChallengeStarted;
+        challenge.timestamp == uint64(block.timestamp);
+        emit ShowInputChallengeInitiatedEvent(msg.sender, index);
+        return (true, index);
+    }
+
+    function startShowMeTheInputChallengeRepond(uint32 _plasmaBlockNumber, //references and proves ownership on output of original transaction
+                            uint32 _plasmaTxNumInBlock,
+                            uint8 _outputNumber,
+                            bytes _plasmaTransaction,
+                            bytes _merkleProof,
+                            uint256 _challengeIndex)
+    public returns(bool success, uint256 index) {
+        ShowInputChallenge storage challenge = showInputChallengeStatuses[_challengeIndex];
+        require(challenge.status == ShowInputChallengeStarted);
+        require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
+        index = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, _plasmaTxNumInBlock, _outputNumber);
+        BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
+        require(TX.isWellFormed);
+        (uint32 blockNumber, uint32 txNumberInBlock, uint8 outputNumber) = BankexPlasmaTransaction.parseTransactionIndex(_challengeIndex);
+        require(_plasmaBlockNumber == blockNumber);
+        require(TX.txNumberInBlock == txNumberInBlock);
+        require(TX.outputs[uint256(_outputNumber)].recipient != address(0)); // basically - such output exists
+        challenge.status = ShowInputChallengeResponded;
+        transactionsSpendingRecords[index] = _challengeIndex;
+        emit ShowInputChallengeRespondedEvent(msg.sender, _challengeIndex, index);
+        msg.sender.transfer(WithdrawCollateral);
+        return (true, index);
+    }
+
+    function finalizeShowMeTheInputChallenge(
+                                uint256 _challengeIndex)
+                            public 
+                            returns(bool success, uint256 index) {
+        ShowInputChallenge storage challenge = showInputChallengeStatuses[_challengeIndex];
+        require(challenge.status == ShowInputChallengeStarted);
+        require(block.timestamp >= uint256(challenge.timestamp) + ShowMeTheInputChallengeDelay);
+        challenge.status = ShowInputChallengeCompleted;
+        (uint32 blockNumber, uint32 txNumberInBlock, uint8 outputNumber) = BankexPlasmaTransaction.parseTransactionIndex(_challengeIndex);
+        setErrorAndLastFoundBlock(blockNumber, true, challenge.from);
+        return (true, _challengeIndex);
     }
 
 // ----------------------------------
@@ -200,9 +262,9 @@ contract PlasmaChallenges {
                             _plasmaTransaction2,
                             _merkleProof2));
         if (_plasmaBlockNumber1 < _plasmaBlockNumber2) {
-            setErrorAndLastFoundBlock(_plasmaBlockNumber2, true);
+            setErrorAndLastFoundBlock(_plasmaBlockNumber2, true, msg.sender);
         } else {
-            setErrorAndLastFoundBlock(_plasmaBlockNumber1, true);
+            setErrorAndLastFoundBlock(_plasmaBlockNumber1, true, msg.sender);
         }
         return true;
     }
@@ -217,8 +279,12 @@ contract PlasmaChallenges {
                             uint8 _inputNumber2,
                             bytes _plasmaTransaction2,
                             bytes _merkleProof2) public view returns (bool success) {
-        var (signer1, input1) = getTXinputDetailsFromProof(_plasmaBlockNumber1, _plasmaTxNumInBlock1, _inputNumber1, _plasmaTransaction1, _merkleProof1);
-        var (signer2, input2) = getTXinputDetailsFromProof(_plasmaBlockNumber2, _plasmaTxNumInBlock2, _inputNumber2, _plasmaTransaction2, _merkleProof2);
+        address signer1;
+        address signer2;
+        BankexPlasmaTransaction.TransactionInput memory input1;
+        BankexPlasmaTransaction.TransactionInput memory input2;
+        (signer1, input1) = getTXinputDetailsFromProof(_plasmaBlockNumber1, _plasmaTxNumInBlock1, _inputNumber1, _plasmaTransaction1, _merkleProof1);
+        (signer2, input2) = getTXinputDetailsFromProof(_plasmaBlockNumber2, _plasmaTxNumInBlock2, _inputNumber2, _plasmaTransaction2, _merkleProof2);
         require(signer1 != address(0));
         require(signer2 != address(0));
         require(signer1 == signer2);
@@ -236,23 +302,19 @@ contract PlasmaChallenges {
                             bytes _merkleProof,
                             uint256 _withdrawIndex //references withdraw
                             ) public returns (bool success) {
-        uint256 txIndex = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber);
+        // uint256 txIndex = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber);
         WithdrawRecord storage record = withdrawRecords[_withdrawIndex];
         require(record.status == WithdrawStatusCompleted);
-        var (signer, input) = getTXinputDetailsFromProof(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber, _plasmaTransaction, _merkleProof);
+        address signer;
+        BankexPlasmaTransaction.TransactionInput memory input;
+        (signer, input) = getTXinputDetailsFromProof(_plasmaBlockNumber, _plasmaTxNumInBlock, _inputNumber, _plasmaTransaction, _merkleProof);
         require(signer != address(0));
         require(input.blockNumber == record.blockNumber);
         require(input.txNumberInBlock == record.txNumberInBlock);
         require(input.outputNumberInTX == record.outputNumberInTX);
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
-
-// ----------------------------------
-// Prove unlawful funding transactions on Plasma
-
-    event FundingWithoutDepositEvent(uint256 indexed _txIndex, uint256 indexed _depositIndex);
-    event DoubleFundingEvent(uint256 indexed _txIndex1, uint256 indexed _txIndex2);
 
 function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and proves transaction
                             uint32 _plasmaTxNumInBlock,
@@ -266,13 +328,13 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
         BankexPlasmaTransaction.TransactionInput memory input = TX.inputs[0];
         require(TX.txNumberInBlock == _plasmaTxNumInBlock);
         uint256 depositIndex = input.amount;
-        uint256 transactionIndex = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, TX.txNumberInBlock, 0);
+        // uint256 transactionIndex = BankexPlasmaTransaction.makeTransactionIndex(_plasmaBlockNumber, TX.txNumberInBlock, 0);
         DepositRecord storage record = depositRecords[depositIndex];
         if (record.status == DepositStatusNoRecord) {
-            setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+            setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
             return true;
         } else if (record.amount != output.amount || record.from != output.recipient) {
-            setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+            setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
             return true;
         }
         revert();
@@ -289,13 +351,19 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
                             uint32 _plasmaTxNumInBlock2,
                             bytes _plasmaTransaction2,
                             bytes _merkleProof2) public returns (bool success) {
-        var (signer1, depositIndex1, transactionIndex1) = getFundingTXdetailsFromProof(_plasmaBlockNumber1, _plasmaTxNumInBlock1, _plasmaTransaction1, _merkleProof1);
-        var (signer2, depositIndex2, transactionIndex2) = getFundingTXdetailsFromProof(_plasmaBlockNumber2, _plasmaTxNumInBlock2, _plasmaTransaction2, _merkleProof2);
+        address signer1;
+        uint256 depositIndex1;
+        uint256 transactionIndex1;
+        address signer2;
+        uint256 depositIndex2;
+        uint256 transactionIndex2;
+        (signer1, depositIndex1, transactionIndex1) = getFundingTXdetailsFromProof(_plasmaBlockNumber1, _plasmaTxNumInBlock1, _plasmaTransaction1, _merkleProof1);
+        (signer2, depositIndex2, transactionIndex2) = getFundingTXdetailsFromProof(_plasmaBlockNumber2, _plasmaTxNumInBlock2, _plasmaTransaction2, _merkleProof2);
         require(checkDoubleFundingFromInternal(signer1, depositIndex1, transactionIndex1, signer2, depositIndex2, transactionIndex2));
         if (_plasmaBlockNumber1 < _plasmaBlockNumber2) {
-            setErrorAndLastFoundBlock(_plasmaBlockNumber2, true);
+            setErrorAndLastFoundBlock(_plasmaBlockNumber2, true, msg.sender);
         } else {
-            setErrorAndLastFoundBlock(_plasmaBlockNumber1, true);
+            setErrorAndLastFoundBlock(_plasmaBlockNumber1, true, msg.sender);
         }
         return true;
     }
@@ -319,10 +387,10 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
     function proveInvalidTransaction(uint32 _plasmaBlockNumber, //references and proves transaction
                             uint32 _plasmaTxNumInBlock,
                             bytes _plasmaTransaction,
-                            bytes _merkleProof) public returns (bool success) {
+                            bytes _merkleProof) public returns (bool success) {   
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
         require(!isWellFormedTransaction(_plasmaTransaction));
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
 
@@ -330,44 +398,47 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
 
     function proveReferencingInvalidBlock(uint32 _plasmaBlockNumber, //references and proves ownership on withdraw transaction
                             uint32 _plasmaTxNumInBlock,
-                            uint32 _plasmaInputNumberInTx,
+                            uint8 _plasmaInputNumberInTx,
                             bytes _plasmaTransaction,
                             bytes _merkleProof) public returns (bool success) {
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
         BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
         require(TX.inputs[_plasmaInputNumberInTx].blockNumber >= _plasmaBlockNumber);
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
 
-// Prove referencing a transaction that has a number larger than number of transactions in block
+// Prove referencing a transaction that has a number larger, than number of transactions in block being referenced
 
     function proveReferencingInvalidTransactionNumber(uint32 _plasmaBlockNumber, //references and proves ownership on withdraw transaction
                             uint32 _plasmaTxNumInBlock,
-                            uint32 _plasmaInputNumberInTx,
+                            uint8 _plasmaInputNumberInTx,
                             bytes _plasmaTransaction,
                             bytes _merkleProof) public returns (bool success) {
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
         BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
-        uint32 blockNumber = TX.inputs[_plasmaBlockNumber].blockNumber;
+        require(isWellFormedDecodedTransaciton(TX));
+        BankexPlasmaTransaction.TransactionInput memory input = TX.inputs[_plasmaInputNumberInTx];
+        uint32 blockNumber = input.blockNumber;
         uint32 numberOfTransactionsInBlock = blockStorage.getNumberOfTransactions(blockNumber);
-        require(TX.inputs[_plasmaBlockNumber].txNumberInBlock >= numberOfTransactionsInBlock);
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        require(input.txNumberInBlock >= numberOfTransactionsInBlock);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
 
-// Prove that block has a transaction with a number larger, than number of transactions in block
+// Prove that block inside itself has a transaction with a number larger, than number of transactions in block
 
     function proveBreakingTransactionNumbering(uint32 _plasmaBlockNumber, //references and proves ownership on withdraw transaction
                             uint32 _plasmaTxNumInBlock,
-                            uint32 _plasmaInputNumberInTx,
+                            uint8 _plasmaInputNumberInTx,
                             bytes _plasmaTransaction,
                             bytes _merkleProof) public returns (bool success) {
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction, _merkleProof));
         BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
+        require(isWellFormedDecodedTransaciton(TX));
         uint32 numberOfTransactionsInBlock = blockStorage.getNumberOfTransactions(_plasmaBlockNumber);
-        require(TX.inputs[_plasmaBlockNumber].txNumberInBlock >= numberOfTransactionsInBlock);
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        require(TX.txNumberInBlock >= numberOfTransactionsInBlock);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
 
@@ -383,8 +454,10 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_plasmaBlockNumber), _plasmaTransaction1, _merkleProof1));
         BankexPlasmaTransaction.PlasmaTransaction memory TX0 = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction0);
         BankexPlasmaTransaction.PlasmaTransaction memory TX1 = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction1);
+        require(isWellFormedDecodedTransaciton(TX0));
+        require(isWellFormedDecodedTransaciton(TX1));
         require(TX0.txNumberInBlock == TX1.txNumberInBlock);
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
 
@@ -408,7 +481,7 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
         require(BankexPlasmaTransaction.checkForInclusionIntoBlock(blockStorage.getMerkleRoot(_originatingPlasmaBlockNumber), _originatingPlasmaTransaction, _originatingMerkleProof));
         bool breaking = checkRightfulInputOwnershipAndBalance(_plasmaTransaction, _originatingPlasmaTransaction, _originatingPlasmaBlockNumber, _inputOfInterest);
         require(breaking);
-        setErrorAndLastFoundBlock(_plasmaBlockNumber, true);
+        setErrorAndLastFoundBlock(_plasmaBlockNumber, true, msg.sender);
         return true;
     }
 
@@ -447,13 +520,21 @@ function proveFundingWithoutDeposit(uint32 _plasmaBlockNumber, //references and 
 
     function isWellFormedTransaction(bytes _plasmaTransaction) public view returns (bool isWellFormed) {
         BankexPlasmaTransaction.PlasmaTransaction memory TX = BankexPlasmaTransaction.plasmaTransactionFromBytes(_plasmaTransaction);
+        return isWellFormedDecodedTransaciton(TX);
+    }
+
+    function isWellFormedDecodedTransaciton(BankexPlasmaTransaction.PlasmaTransaction memory TX) internal view returns (bool isWellFormed) {
         if (TX.sender == address(0) || !TX.isWellFormed) {
             return false;
         }
         uint256 balance = 0;
-        uint8 counter = 0;
+        uint256 counter = 0;
         if (TX.txType == TxTypeFund) {
-            return operators[TX.sender];
+            if (TX.inputs.length != 1) {
+                return false;
+            }
+            BankexPlasmaTransaction.TransactionInput memory input = TX.inputs[0];
+            return operators[TX.sender] &&  input.blockNumber == 0 && input.txNumberInBlock == 0 && input.outputNumberInTX == 0;
         } else if (TX.txType == TxTypeSplit || TX.txType == TxTypeMerge) {
             for (counter = 0; counter < TX.inputs.length; counter++) {
                 balance += TX.inputs[counter].amount;
