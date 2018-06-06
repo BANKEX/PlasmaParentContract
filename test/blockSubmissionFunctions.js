@@ -4,6 +4,7 @@ const PlasmaParent   = artifacts.require('PlasmaParent');
 const PriorityQueue  = artifacts.require('PriorityQueue');
 const BlockStorage = artifacts.require("PlasmaBlockStorage");
 const Challenger = artifacts.require("PlasmaChallenges");
+const PlasmaBuyouts = artifacts.require("PlasmaBuyouts");
 const util = require("util");
 const ethUtil = require('ethereumjs-util')
 const BN = ethUtil.BN;
@@ -11,11 +12,12 @@ const t = require('truffle-test-utils')
 t.init()
 const expectThrow = require("../helpers/expectThrow");
 const {addresses, keys} = require("./keys.js");
-const createTransaction = require("./createTransaction");
+const {createTransaction} = require("./createTransaction");
 const {createBlock} = require("./createBlock");
 const testUtils = require('./utils');
 
-// const Web3 = require("web3");
+console.log("Parent bytecode size = " + (PlasmaParent.bytecode.length -2)/2);
+console.log("Challenger bytecode size = " + (Challenger.bytecode.length -2)/2);
 
 const increaseTime = async function(addSeconds) {
     await web3.currentProvider.send({jsonrpc: "2.0", method: "evm_increaseTime", params: [addSeconds], id: 0})
@@ -36,6 +38,7 @@ contract('PlasmaParent block submission', async (accounts) => {
     let plasma;
     let storage;
     let challenger;
+    let buyouts;
 
     const operator = accounts[0];
 
@@ -52,9 +55,21 @@ contract('PlasmaParent block submission', async (accounts) => {
         plasma = await PlasmaParent.new(queue.address, storage.address, {from: operator})
         await storage.setOwner(plasma.address, {from: operator})
         await queue.setOwner(plasma.address, {from: operator})
-        challenger = await Challenger.new(queue.address, storage.address, {from: operator})
-        await plasma.setChallenger(challenger.address, {from: operator})
-        await plasma.setOperator(operatorAddress, true, {from: operator});
+        buyouts = await PlasmaBuyouts.new(queue.address, storage.address, {from: operator});
+        challenger = await Challenger.new(queue.address, storage.address, {from: operator});
+        await plasma.setDelegates(challenger.address, buyouts.address, {from: operator})
+        await plasma.setOperator(operatorAddress, 2, {from: operator});
+        const canSignBlocks = await storage.canSignBlocks(operator);
+        assert(canSignBlocks);
+        
+        const buyoutsAddress = await plasma.buyoutsContract();
+        assert(buyoutsAddress == buyouts.address);
+
+        const challengesAddress = await plasma.challengesContract();
+        assert(challengesAddress == challenger.address);
+
+        challenger = Challenger.at(plasma.address); // instead of merging the ABI
+        buyouts = PlasmaBuyouts.at(plasma.address);
         firstHash = await plasma.hashOfLastSubmittedBlock();
     })
 
@@ -485,10 +500,44 @@ contract('PlasmaParent block submission', async (accounts) => {
         bl = await storage.blocks(2);
         assert(bl[2] == ethUtil.bufferToHex(block.header.merkleRootHash));
         await increaseTime(60*60*24*14 + 1);
-        await storage.incrementWeekOldCounter();
+        await plasma.incrementWeekOldCounter();
 
         let oldBlock = await storage.weekOldBlockNumber();
         assert(oldBlock.toString(10) === "2");
     })
+
+    it('should supply valid proof in huge block', async () => {
+        const numToCreate = 1000;
+        const allTXes = [];
+        for (let i = 0; i < numToCreate; i++) {
+            const tx = createTransaction(TxTypeFund, i, 
+                [{
+                    blockNumber: 0,
+                    txNumberInBlock: 0,
+                    outputNumberInTransaction: 0,
+                    amount: 0
+                }],
+                [{
+                    amount: 10+i,
+                    to: alice
+                }],
+                    aliceKey
+            )
+            allTXes.push(tx);
+        }
+        const block = createBlock(1, allTXes.length, firstHash, allTXes,  operatorKey)
+        const blockOneArray = block.serialize();
+        const blockOne = Buffer.concat(blockOneArray);
+        const MerkleTools = require("../lib/merkle-tools");
+        const tools = new MerkleTools({hashType: "sha3"});
+        const merkleRoot = block.header.merkleRootHash;
+        for (let i = 0; i < numToCreate/10; i++) {
+            const randomTXnum = Math.floor(Math.random()*numToCreate);
+            const rawTX = block.transactions[randomTXnum].signedTransaction.serialize();
+            const proofObject = block.getProofForTransaction(rawTX);
+            const included = tools.validateBinaryProof(proofObject.proof, proofObject.tx.hash(), merkleRoot);
+            assert(included);
+        }
+    });
 
 })

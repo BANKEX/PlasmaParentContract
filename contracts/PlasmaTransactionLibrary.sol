@@ -279,8 +279,8 @@ library BankexPlasmaTransaction {
     }
 
     function makeTransactionIndex(uint32 _blockNumber, uint32 _txNumberInBlock, uint8 _outputNumberInTX) internal pure returns (uint256 index) {
-        index += uint256(_blockNumber) << ((TxNumberLength + TxOutputNumberLength)*8);
-        index += uint256(_txNumberInBlock) << (TxOutputNumberLength*8);
+        index += ( uint256(_blockNumber) << ((TxNumberLength + TxOutputNumberLength)*8) );
+        index += ( uint256(_txNumberInBlock) << (TxOutputNumberLength*8) );
         index += uint256(_outputNumberInTX);
         return index;
     }

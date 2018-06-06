@@ -3,7 +3,7 @@ pragma solidity ^0.4.24;
 import {BankexPlasmaTransaction} from "./PlasmaTransactionLibrary.sol";
 
 contract TXTester {
-    constructor() {
+    constructor() public {
 
     }
 

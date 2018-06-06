@@ -1,10 +1,12 @@
 pragma solidity ^0.4.24;
 
-import {PlasmaParentInterface} from "./PlasmaParent.sol";
 import {Conversion} from "./Conversion.sol";
 import {ByteSlice} from "./ByteSlice.sol";
 
 interface PlasmaBlockStorageInterface {
+    function isOperator(address _operator) external view returns (bool);
+    function canSignBlocks(address _operator) external view returns (bool);
+    function setOperator(address _op, uint256 _status) external returns (bool success);
     function lastBlockNumber() external view returns(uint256);
     function hashOfLastSubmittedBlock() external view returns(bytes32);
     function weekOldBlockNumber() external view returns(uint256);
@@ -22,7 +24,10 @@ contract PlasmaBlockStorage {
     using ByteSlice for bytes;
     using ByteSlice for ByteSlice.Slice;
     using Conversion for uint256;
-    PlasmaParentInterface public owner;
+    address public owner;
+
+    mapping(address => OperatorStatus) public operators;
+    enum OperatorStatus {Null, CanSignTXes, CanSignBlocks}
 
     uint256 public lastBlockNumber;
     uint256 public weekOldBlockNumber;
@@ -57,21 +62,50 @@ contract PlasmaBlockStorage {
     event BlockHeaderSubmitted(uint256 indexed _blockNumber, bytes32 indexed _merkleRoot);
 
     constructor() public {
-        owner = PlasmaParentInterface(msg.sender);
+        owner = msg.sender;
         blocks[weekOldBlockNumber].submittedAt = uint64(block.timestamp);
     }
 
     modifier onlyOwner() {
-        require(msg.sender == address(owner));
+        require(msg.sender == owner);
         _;
     }
 
     function setOwner(address _newOwner) onlyOwner public {
         require(_newOwner != address(0));
-        owner = PlasmaParentInterface(_newOwner);
+        owner = _newOwner;
     }
 
-    function incrementWeekOldCounter() public {
+    function setOperator(address _op, uint256 _status) public returns (bool success) {
+        require(msg.sender == owner);
+        OperatorStatus stat = operators[_op];
+        OperatorStatus newStat = OperatorStatus(_status);
+        if (stat == OperatorStatus.Null) {
+            operators[_op] = newStat;
+            return true;
+        } else if (stat == OperatorStatus.CanSignTXes) {
+            require(newStat == OperatorStatus.CanSignBlocks);
+            operators[_op] = newStat;
+            return true;
+        } else if (stat == OperatorStatus.CanSignBlocks) {
+            require(newStat == OperatorStatus.CanSignTXes);
+            operators[_op] = newStat;
+            return true;
+        }
+        revert();
+    }
+
+    function isOperator(address _operator) public view returns (bool) {
+        OperatorStatus stat = operators[_operator];
+        return stat != OperatorStatus.Null;
+    }
+
+    function canSignBlocks(address _operator) public view returns (bool) {
+        OperatorStatus stat = operators[_operator];
+        return stat == OperatorStatus.CanSignBlocks;
+    }
+
+    function incrementWeekOldCounter() onlyOwner public {
         uint256 ts = block.timestamp - (1 weeks);
         uint256 localCounter = weekOldBlockNumber;
         while (uint256(blocks[localCounter].submittedAt) <= ts) {
@@ -122,7 +156,7 @@ contract PlasmaBlockStorage {
             bytes32 s = reusableSlice.slice(reusableSpace[0],reusableSpace[1]).toBytes32();
             bytes32 newBlockHash = keccak256(abi.encodePacked(PersonalMessagePrefixBytes, NewBlockPersonalHashLength.uintToBytes(), uint32(reusableSpace[2]), uint32(reusableSpace[3]), previousBlockHash, merkleRootHash));
             address signer = ecrecover(newBlockHash, uint8(reusableSpace[4]), r, s);
-            require(owner.isOperator(signer));
+            require(canSignBlocks(signer));
             lastBlockHash = keccak256(abi.encodePacked(PersonalMessagePrefixBytes, PreviousBlockPersonalHashLength.uintToBytes(), reusableSlice.toBytes()));
             storeBlock(reusableSpace[2], reusableSpace[3], merkleRootHash, i);
         }

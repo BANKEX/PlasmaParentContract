@@ -12,7 +12,7 @@ const t = require('truffle-test-utils')
 t.init()
 const expectThrow = require("../helpers/expectThrow");
 const {addresses, keys} = require("./keys.js");
-const createTransaction = require("./createTransaction");
+const {createTransaction} = require("./createTransaction");
 const {createBlock, createMerkleTree} = require("./createBlock");
 const testUtils = require('./utils');
 

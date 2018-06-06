@@ -30,7 +30,8 @@ module.exports = {
                 let wallet = require('ethereumjs-wallet').fromPrivateKey(Buffer.from(env.ETH_KEY, 'hex'));
                 return new WalletProvider(wallet, "https://rinkeby.infura.io/" + env.INFURA_TOKEN)
             },
-            network_id: 4
+            network_id: 4,
+            gasPrice: 20000000000
         },
 	    rinkeby2: {
 		    provider: function() {

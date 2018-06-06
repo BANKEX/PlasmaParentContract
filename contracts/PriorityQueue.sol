@@ -38,6 +38,7 @@ interface PriorityQueueInterface {
 contract PriorityQueue {
     using SafeMath for uint256;
 
+    uint256 priorityModifier = uint256(1) << 192;
     /*
      *  Modifiers
      */
@@ -54,15 +55,23 @@ contract PriorityQueue {
     /*
      *  Storage
      */
-    address owner;
-    uint256[] heapList;
+    struct QueueItem {
+        uint128 priority;
+        uint128 withdrawIndex;
+    }
+    
+    address public owner;
+    QueueItem[] public heapList;
     uint256 public currentSize;
 
-    constructor ()
-        public
+    constructor () public
     {
         owner = msg.sender;
-        heapList = [0];
+        QueueItem memory item = QueueItem({
+            priority: 0,
+            withdrawIndex: 0
+        });
+        heapList.push(item);
         currentSize = 0;
     }
 
@@ -70,7 +79,12 @@ contract PriorityQueue {
         public
         onlyOwner
     {
-        heapList.push(k);
+        uint128 priority = uint128(k >> 192);
+        uint128 withdrawIndex = uint128(k % priorityModifier);
+        heapList.push(QueueItem({
+            priority: priority,
+            withdrawIndex: withdrawIndex
+        }));
         currentSize = currentSize.add(1);
         percUp(currentSize);
     }
@@ -83,7 +97,7 @@ contract PriorityQueue {
         if (i.mul(2).add(1) > currentSize) {
             return i.mul(2);
         } else {
-            if (heapList[i.mul(2)] < heapList[i.mul(2).add(1)]) {
+            if (heapList[i.mul(2)].priority < heapList[i.mul(2).add(1)].priority) {
                 return i.mul(2);
             } else {
                 return i.mul(2).add(1);
@@ -96,7 +110,7 @@ contract PriorityQueue {
         view
         returns (uint256)
     {
-        return heapList[1];
+        return uint256(heapList[1].withdrawIndex);
     }
 
     function delMin()
@@ -104,7 +118,8 @@ contract PriorityQueue {
         onlyOwner
         returns (uint256)
     {
-        uint256 retVal = heapList[1];
+        require(currentSize > 0);
+        uint256 retVal = uint256(heapList[1].withdrawIndex);
         heapList[1] = heapList[currentSize];
         delete heapList[currentSize];
         currentSize = currentSize.sub(1);
@@ -112,12 +127,14 @@ contract PriorityQueue {
         return retVal;
     }
 
-    function percUp(uint256 i)
+    function percUp(uint256 j)
         private
-    {
+    {   
+        uint256 i = j;
+        QueueItem memory tmp;
         while (i.div(2) > 0) {
-            if (heapList[i] < heapList[i.div(2)]) {
-                uint256 tmp = heapList[i.div(2)];
+            if (heapList[i].priority < heapList[i.div(2)].priority) {
+                tmp = heapList[i.div(2)];
                 heapList[i.div(2)] = heapList[i];
                 heapList[i] = tmp;
             }
@@ -125,13 +142,15 @@ contract PriorityQueue {
         }
     }
 
-    function percDown(uint256 i)
+    function percDown(uint256 j)
         private
     {
+        uint256 i = j;
+        QueueItem memory tmp;
         while (i.mul(2) <= currentSize) {
             uint256 mc = minChild(i);
-            if (heapList[i] > heapList[mc]) {
-                uint256 tmp = heapList[i];
+            if (heapList[i].priority > heapList[mc].priority) {
+                tmp = heapList[i];
                 heapList[i] = heapList[mc];
                 heapList[mc] = tmp;
             }

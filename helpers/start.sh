@@ -1,3 +1,3 @@
 #!/bin/sh
 
-ganache-cli -l=7e7 -m 'candy maple cake sugar pudding cream honey rich smooth crumble sweet treat'
+ganache-cli --gasLimit=7e7 --defaultBalanceEther=10000 -m 'candy maple cake sugar pudding cream honey rich smooth crumble sweet treat'

@@ -1,4 +1,6 @@
 const util = require("util");
+const Block = require("../lib/Block/RLPblock");
+const ethUtil = require('ethereumjs-util');
 
 module.exports = {
     /**
@@ -15,5 +17,26 @@ module.exports = {
       let get = util.promisify(allEvents.get.bind(allEvents));
       let evs = await get();
       assert.web3Events({logs: evs}, Array.isArray(event) ? event : [{event, args}], 'The event is emitted');
+    },
+
+    /**
+     * Submit a block header to the Plasma contract
+     *
+     * @param plasma The Plasma contract
+     * @param {Block} block A block to submit
+     * @returns {Promise<void>}
+     */
+    async submitBlock(plasma, block) {
+        const blockHeader = Buffer.concat(block.serialize()).slice(0,137);
+        await plasma.submitBlockHeaders(ethUtil.bufferToHex(blockHeader));
+    },
+
+    depositIndex(blockNumber) {
+        return (new web3.BigNumber(blockNumber)).mul(new web3.BigNumber(2).pow(32));
+    },
+
+
+    async checkPlasmaStopped() {
+
     }
 };

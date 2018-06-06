@@ -51,10 +51,21 @@ function createTransaction(transactionType, transactionNumber, inputs, outputs, 
     // sigTX.serializeSignature(sig)
 
     const numberedTX = new PlasmaTransactionWithNumberAndSignature({
-        transactionNumberInBlock: (new BN(transactionNumber)).toBuffer("be",4),
+        transactionNumberInBlock: (new BN(transactionNumber)).toBuffer("be", 4),
         signedTransaction: sigTX
     })
     return numberedTX
 }
 
-module.exports = createTransaction;
+function parseTransactionIndex(index) {
+    let idx = new BN(index)
+    const ONE = new BN(1);
+    let outputNumber = idx.mod(ONE.ushln(8));
+    idx = idx.ushrn(8);
+    const txNumber = idx.mod(ONE.ushln(32));
+    idx = idx.ushrn(32);
+    const blockNumber = idx.mod(ONE.ushln(32));
+    return {blockNumber, txNumber, outputNumber}
+}
+
+module.exports = {createTransaction, parseTransactionIndex};
