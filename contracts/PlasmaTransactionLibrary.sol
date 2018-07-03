@@ -108,6 +108,18 @@ library BankexPlasmaTransaction {
         return TX;
     }
 
+    function libmoPlasmaTransactionFromBytes(bytes _rawLimboTX) internal view returns (PlasmaTransaction memory TX) {
+        RLP.RLPItem memory item = _rawLimboTX.toRLPItem();
+        if (!item._validate()) {
+            return constructEmptyTransaction();
+        }
+        TX = signedPlasmaTransactionFromRLPItem(item);
+        if (!TX.isWellFormed) {
+            return constructEmptyTransaction();
+        }
+        return TX;
+    }
+
     function signedPlasmaTransactionFromRLPItem(RLP.RLPItem memory _item) internal view returns (PlasmaTransaction memory TX) {
         if (!_item.isList()) {
             return constructEmptyTransaction();
@@ -278,20 +290,34 @@ library BankexPlasmaTransaction {
         return TX;
     }
 
-    function makeTransactionIndex(uint32 _blockNumber, uint32 _txNumberInBlock, uint8 _outputNumberInTX) internal pure returns (uint256 index) {
-        index += ( uint256(_blockNumber) << ((TxNumberLength + TxOutputNumberLength)*8) );
-        index += ( uint256(_txNumberInBlock) << (TxOutputNumberLength*8) );
-        index += uint256(_outputNumberInTX);
+    function makeTransactionIndex(uint32 _blockNumber, uint32 _txNumberInBlock) internal pure returns (uint64 index) {
+        index += (uint64(_blockNumber) << (TxNumberLength*8));
+        index += uint64(_txNumberInBlock);
         return index;
     }
 
-    function parseTransactionIndex(uint256 _index) internal pure returns (uint32 blockNumber, uint32 txNumberInBlock, uint8 outputNumber) {
-        uint256 idx = _index % (uint256(1) << 128);
-        outputNumber = uint8(idx % (uint256(1) << TxOutputNumberLength*8));
-        idx = idx >> (TxOutputNumberLength*8);
-        txNumberInBlock = uint32(idx % (uint256(1) << TxNumberLength*8));
+    function parseTransactionIndex(uint64 _index) internal pure returns (uint32 blockNumber, uint32 txNumberInBlock) {
+        uint64 idx = _index;
+        txNumberInBlock = uint32(idx % (uint64(1) << TxNumberLength*8));
         idx = idx >> (TxNumberLength*8);
-        blockNumber = uint32(idx % (uint256(1) << BlockNumberLength*8));
+        blockNumber = uint32(idx);
+        return (blockNumber, txNumberInBlock);
+    }
+
+    function makeInputOrOutputIndex(uint32 _blockNumber, uint32 _txNumberInBlock, uint8 _outputNumberInTX) internal pure returns (uint72 index) {
+        index += ( uint72(_blockNumber) << ((TxNumberLength + TxOutputNumberLength)*8) );
+        index += ( uint72(_txNumberInBlock) << (TxOutputNumberLength*8) );
+        index += uint72(_outputNumberInTX);
+        return index;
+    }
+
+    function parseInputOrOutputIndex(uint72 _index) internal pure returns (uint32 blockNumber, uint32 txNumberInBlock, uint8 outputNumber) {
+        uint256 idx = _index;
+        outputNumber = uint8(idx % (uint72(1) << TxOutputNumberLength*8));
+        idx = idx >> (TxOutputNumberLength*8);
+        txNumberInBlock = uint32(idx % (uint72(1) << TxNumberLength*8));
+        idx = idx >> (TxNumberLength*8);
+        blockNumber = uint32(idx % (uint72(1) << BlockNumberLength*8));
         return (blockNumber, txNumberInBlock, outputNumber);
     }
 

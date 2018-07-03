@@ -73,7 +73,7 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         firstHash = await plasma.hashOfLastSubmittedBlock();
     })
 
-    it('Similate exit procedure', async () => {
+    it('Simulate exit procedure', async () => {
         // first we fund Alice with something
         const withdrawCollateral = await plasma.WithdrawCollateral();
         
@@ -203,14 +203,14 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         submissionReceipt = await plasma.startWithdraw(2, 0, ethUtil.bufferToHex(reencodedTXBob), ethUtil.bufferToHex(proofBob), {from: bob, value: withdrawCollateral})
         let withdrawIndexBob = submissionReceipt.logs[0].args._withdrawIndex;
         let withdrawRecordBob = await plasma.withdrawRecords(withdrawIndexBob);
-        assert(withdrawRecordBob[7].toString(10) === "200");
-        assert(withdrawRecordBob[6] === bob);
+        assert(withdrawRecordBob[8].toString(10) === "200");
+        assert(withdrawRecordBob[7] === bob);
 
         submissionReceipt = await plasma.startWithdraw(1, 0, ethUtil.bufferToHex(reencodedTXAlice), ethUtil.bufferToHex(proofAlice), {from: alice, value: withdrawCollateral})
         let withdrawIndexAlice = submissionReceipt.logs[0].args._withdrawIndex;
         let withdrawRecordAlice = await plasma.withdrawRecords(withdrawIndexAlice);
-        assert(withdrawRecordAlice[7].toString(10) === "100");
-        assert(withdrawRecordAlice[6] === alice);
+        assert(withdrawRecordAlice[8].toString(10) === "100");
+        assert(withdrawRecordAlice[7] === alice);
 
 
         let size = await queue.currentSize();
@@ -301,8 +301,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         let withdrawIndex = submissionReceipt.logs[0].args._withdrawIndex;
         let withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
 
-        assert(withdrawRecord[7].toString(10) === "100");
-        assert(withdrawRecord[6] === alice);
+        assert(withdrawRecord[8].toString(10) === "100");
+        assert(withdrawRecord[7] === alice);
         assert(withdrawRecord[3].toString(10) === "1");
         //now lets offer a buyoyt for half of the amount
         // offerOutputBuyout(uint256 _withdrawIndex)
@@ -315,8 +315,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         submissionReceipt = await buyouts.acceptBuyoutOffer(withdrawIndex, {from: alice})
         
         withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
-        assert(withdrawRecord[7].toString(10) === "100");
-        assert(withdrawRecord[6] === bob);
+        assert(withdrawRecord[8].toString(10) === "100");
+        assert(withdrawRecord[7] === bob);
         
         const delay = await plasma.WithdrawDelay();
         await increaseTime(delay.toNumber() + 1);
@@ -392,8 +392,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         let withdrawIndex = submissionReceipt.logs[0].args._withdrawIndex;
         let withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
 
-        assert(withdrawRecord[7].toString(10) === "100");
-        assert(withdrawRecord[6] === alice);
+        assert(withdrawRecord[8].toString(10) === "100");
+        assert(withdrawRecord[7] === alice);
         assert(withdrawRecord[3].toString(10) === "1");
         //now lets offer a buyoyt for half of the amount
         // offerOutputBuyout(uint256 _withdrawIndex)
@@ -404,8 +404,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         assert(offer[0].toString(10) === "50");
         
         withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
-        assert(withdrawRecord[7].toString(10) === "100");
-        assert(withdrawRecord[6] === alice);
+        assert(withdrawRecord[8].toString(10) === "100");
+        assert(withdrawRecord[7] === alice);
         
         const delay = await plasma.WithdrawDelay();
         await increaseTime(delay.toNumber() + 1);
@@ -486,8 +486,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         let withdrawIndex = submissionReceipt.logs[0].args._withdrawIndex;
         let withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
 
-        assert(withdrawRecord[7].toString(10) === "100");
-        assert(withdrawRecord[6] === alice);
+        assert(withdrawRecord[8].toString(10) === "100");
+        assert(withdrawRecord[7] === alice);
         assert(withdrawRecord[3].toString(10) === "1");
         //now lets offer a buyoyt for half of the amount
         // offerOutputBuyout(uint256 _withdrawIndex)
@@ -498,8 +498,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         assert(offer[0].toString(10) === "50");
         
         withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
-        assert(withdrawRecord[7].toString(10) === "100");
-        assert(withdrawRecord[6] === alice);
+        assert(withdrawRecord[8].toString(10) === "100");
+        assert(withdrawRecord[7] === alice);
         
         const delay = await plasma.WithdrawDelay();
         await increaseTime(delay.toNumber() + 1);
@@ -705,9 +705,9 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         )
 
         let withdrawRecordAlice = await plasma.withdrawRecords(withdrawIndexAlice);
-        assert(withdrawRecordAlice[7].toString(10) === "100");
-        assert(withdrawRecordAlice[6] === alice);
-        assert(withdrawRecordAlice[3].toString(10) === "2");
+        assert(withdrawRecordAlice[8].toString(10) === "100");
+        assert(withdrawRecordAlice[7] === alice);
+        assert(withdrawRecordAlice[3].toString(10) === "4");
 
     })
 
@@ -759,8 +759,8 @@ contract('PlasmaParent buyout procedure', async (accounts) => {
         submissionReceipt = await plasma.finalizeWithdraw(withdrawIndexAlice);
 
         let withdrawRecordAlice = await plasma.withdrawRecords(withdrawIndexAlice);
-        assert(withdrawRecordAlice[7].toString(10) === "100");
-        assert(withdrawRecordAlice[6] === alice);
+        assert(withdrawRecordAlice[8].toString(10) === "100");
+        assert(withdrawRecordAlice[7] === alice);
         assert(withdrawRecordAlice[3].toString(10) === "3");
 
     })

@@ -3,7 +3,7 @@ const BlockStorage = artifacts.require("PlasmaBlockStorage.sol");
 const PriorityQueue = artifacts.require("PriorityQueue.sol");
 const PlasmaParent  = artifacts.require("PlasmaParent.sol");
 const PlasmaChallenges  = artifacts.require("PlasmaChallenges.sol");
-const PlasmaBuyouts = artifacts.require("PlasmaBuyouts");
+const PlasmaBuyouts = artifacts.require("PlasmaExitGame");
 const assert = require('assert');
 const _ = require('lodash');
 
@@ -17,12 +17,10 @@ module.exports = function(deployer, network, accounts) {
         let queue = await PriorityQueue.deployed();
 
         console.log("Plasma parent bytecode length is " + PlasmaParent.bytecode.length / 2);
+        console.log("Plasma challenges bytecode length is " + PlasmaChallenges.bytecode.length / 2);
+        console.log("Exit game bytecode length is " + PlasmaBuyouts.bytecode.length / 2);
         await deployer.deploy(PlasmaParent, queue.address, storage.address,  {from: operator});
         let parent = await PlasmaParent.deployed();
-
-        console.log("Plasma challenges bytecode length is " + PlasmaChallenges.bytecode.length / 2);
-        await deployer.deploy(PlasmaChallenges, queue.address, storage.address,  {from: operator});
-        let challenges = await PlasmaChallenges.deployed();
 
         await storage.setOwner(parent.address,{from: operator});
         await queue.setOwner(parent.address, {from: operator});

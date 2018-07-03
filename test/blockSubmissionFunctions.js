@@ -17,6 +17,7 @@ const {createBlock} = require("./createBlock");
 const testUtils = require('./utils');
 
 console.log("Parent bytecode size = " + (PlasmaParent.bytecode.length -2)/2);
+console.log("Buyout bytecode size = " + (PlasmaBuyouts.bytecode.length -2)/2)
 console.log("Challenger bytecode size = " + (Challenger.bytecode.length -2)/2);
 
 const increaseTime = async function(addSeconds) {

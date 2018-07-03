@@ -1,12 +1,11 @@
 # Plasma Parent Contract
 
-# This contract is active WIP, tests will be pushed in the next few days
+# This contract is active WIP for More Viable Plasma implementation
+## All tests are broken except ```transactionSubmissionFunctions.js```
+## Highly unoptimized
 
-# TODO
 
-- Add a method to withdraw to address other than "msg.sender" (low priority).
-- Add a zkSNARK to be able to prove knowledge of the private key for an Ethereum address (for fun).
-- Evaluate a use of external WithdrawRecord/DepositRecord holder the same way as BlockStorage works, so the main contract can migrate (although it implies partial loss of trust or should be done by a committee of "trusted" parties). Most likely a V2 ABI encoding support is necessary.
+# General transaction overview, a subject of change still
 
 ## Transaction structure
 
@@ -40,6 +39,7 @@ An RLP encoded set with the following items:
 From this signature Plasma operator deduces a sender, checks that the sender is an owner of UTXOs referenced by inputs. Signature is based on EthereumPersonalHash(RLPEncode(Transaction)). Transaction should be well-formed, sum of inputs equal to sum of the outputs, etc 
 
 ### Numbered signed transaction 
+## This will change and become deprecated. Transaction number will be determined exclusively from the Merkle tree position
 An RLP encoded set with the following items:
 - Transaction number in block, 4 bytes, inserted by Plasma operator when block is assembled
 - Signed transaction, as described above
@@ -56,22 +56,22 @@ Signature is based on EthereumPersonalHash(block number || number of transaction
 
 ### Block
 - Block header, as described above, 137 bytes
-- RLP encoded array (list) of Numbered signed transactions, as described above
+- RLP encoded array (list) of Numbered signed transactions, as described above. Will later change to the list of just Signed transactions!
 
 While some fields can be excessive, such block header can be submitted by anyone to the main Ethereum chain when block is available, but for some reason not sent to the smart contract. Transaction numbering is done by the operator, it should be monotonically increasing without spaces and number of transactions in header should (although this is not necessary for the functionality) match the number of transactions in the Merkle tree and the full block.
 
 ## This contract differs from Minimal Viable Plasma in the following:
 
+- More Viable Plasma transaction priority and canonicity rules, so no confirmation signatures now
 - Other transactions structure with nested RLP fields
 - Deposit transactions are declarative: new block with 1 transaction is not created automatically (although can be easily changed), but deposit record is created and can be withdrawn back to user if Plasma operator doesn't provide transaction of appropriate structure (referencing this deposit, having proper owner and amount).
-- "Slow" withdraw procedure (without burning mentioned above) user has to provide some collateral in case his withdraw will be challenged. If no challenge happened it's returned along with the value of UTXO being withdrawn.
 - Anyone(!) can send a header of the block to the main chain, so if block is assembled and available, but not yet pushed to the main chain, anyone can send a header on behalf of Plasma operator.
-- Another important clarification - if user spots an invalid transaction (double spends, etc) a contract is switched to "Exit mode", with all withdraw transactions become an "Exit" transaction and an exit queue if formed. Through the text a word "withdraw" usually means pulling funds from Plasma to the main chain during the normal operation, while "Exit" is when invalid block spotted by at least one (responsible!) user who changes a state of the contract. Incentive will be added for the first person who catches the Plasma operator.
+- Another important clarification - if user spots an invalid transaction (double spends, etc) a contract is switched to "Exit mode" (broken right now), disabling new block submission functionality.
+- Challenges for exits invalidation should only be accepted from the blocks before the first invalid one.
 
-
-## Express withdraw is off for now
 
 ## Implemented functionality:
+## Ignore for now
 
 All basic challenges and potential "cheats" for operator or user should be now covered
 
@@ -143,9 +143,7 @@ Alex Vlasov, [@shamatar](https://github.com/shamatar),  av@bankexfoundation.org
 
 ## Further work
 
-Making a hybrid of Minimal Viable Plasma and Plasma Cash to use separate tree of all transactions ever spent, and use this tree when withdraw procedure is executed.
-
-Trial usage of invariant that sum of all unchallenged pending withdrawals should be less than or equal to a total balance of Plasma contract. It will prevent the case of block withholding by Plasma operator - by trying to do a double spend or invalid ownership transfer and than to withhold few blocks to prevent a global stop he will most likely exceed such limitation.
+Check out our zkSNARK based Plasma [here](https://github.com/BANKEX/snarky_plasma) and corresponding gadget lib [here](https://github.com/BANKEX/gadget_lib).
 
 ## License
 

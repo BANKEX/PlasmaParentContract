@@ -297,7 +297,7 @@ contract('PlasmaParent', async (accounts) => {
                 )
                 const withdrawIndex = submissionReceipt.logs[0].args._withdrawIndex;
                 const withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
-                assert(withdrawRecord[6] === alice);
+                assert(withdrawRecord[7] === alice);
                 assert(withdrawRecord[3].toString(10) === "1");
                 const included = tools.validateBinaryProof(proofObject.proof, proofObject.tx.hash(), merkleRoot);
                 assert(included);
@@ -364,7 +364,7 @@ contract('PlasmaParent', async (accounts) => {
         )
         const withdrawIndex = submissionReceipt.logs[0].args._withdrawIndex;
         let withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
-        assert(withdrawRecord[6] === alice);
+        assert(withdrawRecord[7] === alice);
         assert(withdrawRecord[3].toString(10) === "1");
 
 
@@ -378,8 +378,8 @@ contract('PlasmaParent', async (accounts) => {
             withdrawIndex
         )
         withdrawRecord = await plasma.withdrawRecords(withdrawIndex);
-        assert(withdrawRecord[6] === alice);
-        assert(withdrawRecord[3].toString(10) === "2");
+        assert(withdrawRecord[7] === alice);
+        assert(withdrawRecord[3].toString(10) === "4");
     })
 
 });

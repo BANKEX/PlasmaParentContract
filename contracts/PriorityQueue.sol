@@ -28,17 +28,15 @@ library SafeMath {
 }
 
 interface PriorityQueueInterface {
-    function insert(uint256 k) external;
+    function insert(uint72 _priority, uint8 _type, bytes22 _index) external;
     function minChild(uint256 i) view external returns (uint256);
-    function getMin() external view returns (uint256);
-    function delMin() external returns (uint256);
-    function currentSize() external returns(uint256);
+    function getMin() external view returns (uint8 recordType, bytes22 index);
+    function delMin() external returns (uint8 recordType, bytes22 index);
+    function currentSize() external returns (uint256);
 }
 
 contract PriorityQueue {
     using SafeMath for uint256;
-
-    uint256 priorityModifier = uint256(1) << 192;
     /*
      *  Modifiers
      */
@@ -55,9 +53,14 @@ contract PriorityQueue {
     /*
      *  Storage
      */
+
+    uint8 constant RecordTypeIndex = 1;
+    uint8 constant RecordTypeHash = 2;
+
     struct QueueItem {
-        uint128 priority;
-        uint128 withdrawIndex;
+        uint72 priority;
+        uint8 recordType;
+        bytes22 withdrawIndex;
     }
     
     address public owner;
@@ -69,21 +72,22 @@ contract PriorityQueue {
         owner = msg.sender;
         QueueItem memory item = QueueItem({
             priority: 0,
-            withdrawIndex: 0
+            recordType: 0,
+            withdrawIndex: bytes22(0)
         });
         heapList.push(item);
         currentSize = 0;
     }
 
-    function insert(uint256 k)
+    function insert(uint72 _priority, uint8 _type, bytes22 _index)
         public
         onlyOwner
     {
-        uint128 priority = uint128(k >> 192);
-        uint128 withdrawIndex = uint128(k % priorityModifier);
+        require(_type == RecordTypeIndex || _type == RecordTypeHash);
         heapList.push(QueueItem({
-            priority: priority,
-            withdrawIndex: withdrawIndex
+            priority: _priority,
+            recordType: _type,
+            withdrawIndex: _index
         }));
         currentSize = currentSize.add(1);
         percUp(currentSize);
@@ -108,23 +112,24 @@ contract PriorityQueue {
     function getMin()
         public
         view
-        returns (uint256)
+        returns (uint8 recordType, bytes22 index)
     {
-        return uint256(heapList[1].withdrawIndex);
+        return (heapList[1].recordType, heapList[1].withdrawIndex);
     }
 
     function delMin()
         public
         onlyOwner
-        returns (uint256)
+        returns (uint8 recordType, bytes22 index)
     {
         require(currentSize > 0);
-        uint256 retVal = uint256(heapList[1].withdrawIndex);
+        recordType = heapList[1].recordType;
+        index = heapList[1].withdrawIndex;
         heapList[1] = heapList[currentSize];
         delete heapList[currentSize];
         currentSize = currentSize.sub(1);
         percDown(1);
-        return retVal;
+        return (recordType, index);
     }
 
     function percUp(uint256 j)
