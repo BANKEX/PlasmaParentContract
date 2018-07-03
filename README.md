@@ -1,5 +1,11 @@
 # Plasma Parent Contract
 
+## For understanding of the original idea and posible constructions please refer to
+- Original Plasma paper [here](https://plasma.io)
+- Discussion for Minimal Viable Plasma - [MVP](https://ethresear.ch/t/minimal-viable-plasma/426)
+- Novel construction of More Viable Plasma - [MoreVP](https://ethresear.ch/t/more-viable-plasma/2160)
+
+
 # This contract is active WIP for More Viable Plasma implementation
 ## All tests are broken except ```transactionSubmissionFunctions.js```
 ## Highly unoptimized
