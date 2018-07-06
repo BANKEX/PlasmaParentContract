@@ -7,7 +7,7 @@
 
 
 # This contract is active WIP for More Viable Plasma implementation
-## All tests are broken except ```transactionSubmissionFunctions.js```
+## For tests USE ```transactionSubmissionFunctions.js```
 ## Highly unoptimized
 
 
