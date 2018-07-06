@@ -11,7 +11,7 @@
 After significant changes please use an [up-to-date test](test/transactionSubmissionFunctions.js)
 
 ## Optimization 
-In progress. We work hard on lower gas prices and more transactions per second! We'd appreciate any help!
+In progress. We work hard on lower gas prices and more transactions per second.
 
 
 # General transaction overview, a subject of change still
@@ -48,7 +48,7 @@ An RLP encoded set with the following items:
 From this signature Plasma operator deduces a sender, checks that the sender is an owner of UTXOs referenced by inputs. Signature is based on EthereumPersonalHash(RLPEncode(Transaction)). Transaction should be well-formed, sum of inputs equal to sum of the outputs, etc 
 
 ### Numbered signed transaction 
-## This will change and become deprecated. Transaction number will be determined exclusively from the Merkle tree position
+> This will change and become deprecated. Transaction number will be determined exclusively from the Merkle tree position
 An RLP encoded set with the following items:
 - Transaction number in block, 4 bytes, inserted by Plasma operator when block is assembled
 - Signed transaction, as described above
