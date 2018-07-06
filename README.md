@@ -7,8 +7,11 @@
 
 
 # This contract is active WIP for More Viable Plasma implementation
-## For tests USE ```transactionSubmissionFunctions.js```
-## Highly unoptimized
+## Test coverage
+After significant changes please use an [up-to-date test](test/transactionSubmissionFunctions.js)
+
+## Optimization 
+In progress. We work hard on lower gas prices and more transactions per second! We'd appreciate any help!
 
 
 # General transaction overview, a subject of change still
